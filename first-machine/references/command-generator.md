@@ -21,23 +21,43 @@ Load this skill when:
 
 ## Required Resources
 
-Before generating any commands, consult the following MCP resources to understand available capabilities:
+Before generating any commands, consult the following scripts to understand available capabilities:
 
-- **first://labware** - Lists all available labware types and their specifications
-- **first://commands** - Describes all available commands, their parameters, and usage
-- **first://rules** - Contains rules and restrictions including command dependencies and available slots
+- **scripts/available-labware.py** - Lists all available labware types and their specifications
+- **scripts/available-commands.py** - Describes all available commands, their parameters, and usage
+
+**Important**: Before running these scripts, ensure the required Python packages are installed. 
+
+### Rules and Restrictions
+
+The following rules must be followed when generating commands:
+
+**Available Deck Slots:**
+- The following deck slots can be used: A1, A2, A3, A4, B1, B2, B3, B4, C1, C2, C3, C4
+
+**Command Restrictions:**
+- The `move_electrode` command cannot use deck slots A1, A2, A3, or A4
+- The param `height_from_bottom` cannot be negative
+
+**Command Dependencies:**
+- `load_deck` must always be the first command
+- The `attach_tip` command must be called before `aspirate_from`, `dispense_to`, or `drop_tip` commands
 
 ## Instructions
 
 To generate a protocol from natural language instructions:
 
-1. **Consult resources first**: Fetch and review the labware, commands, and rules resources before generating any protocol.
+1. **Install dependencies**: Ensure the required Python package `puda_drivers` is installed by running `pip install puda_drivers` before executing any scripts.
 
-2. **Follow dependencies**: Adhere to command dependencies specified in the rules resource. Order commands correctly based on their dependencies.
+2. **Consult resources first**: Run the available-labware.py and available-commands.py scripts to review labware types and command specifications before generating any protocol.
 
-3. **Validate parameters**: Ensure all command parameters match the specifications in the commands resource and that labware references exist in the labware resource.
+3. **Follow rules**: Adhere to command rules specified in the rules section above. Order commands correctly based on their dependencies.
 
-4. **Return structured JSON**: Output a valid JSON array of command objects.
+4. **Validate parameters**: Ensure all command parameters match the specifications from the available-commands.py script and that labware references exist in the available-labware.py output.
+
+5. **Check slot restrictions**: Verify that deck slots used in commands are in the available_slots list and respect any command_restrictions.
+
+6. **Return structured JSON**: Output a valid JSON array of command objects.
 
 ## Output Format
 
@@ -47,7 +67,7 @@ Return the answer as a valid JSON array of command objects with the following st
 [
     {
         "step_number": 1,
-        "command": "command_name",
+        "name": "command_name",
         "params": {
             "param1": "value1",
             "param2": "value2"
@@ -58,13 +78,14 @@ Return the answer as a valid JSON array of command objects with the following st
 
 Each command object must include:
 - `step_number`: Sequential integer starting from 1
-- `command`: Valid command name from the commands resource
+- `name`: Valid command name from the commands resource
 - `params`: Object containing all required and optional parameters for the command
 
 ## Best Practices
 
-- Always fetch MCP resources before generating protocols
-- Validate all labware references against the labware resource
-- Ensure command ordering respects dependency rules
+- Always run the available-labware.py and available-commands.py scripts before generating protocols
+- Validate all labware references against the labware script output
+- Ensure command ordering respects dependency rules in the rules section
+- Check that deck slots are valid and respect command restrictions
 - Use clear, descriptive parameter values
 - Include all required parameters for each command
