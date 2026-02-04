@@ -40,8 +40,12 @@ The following rules must be followed when generating commands:
 - The param `height_from_bottom` cannot be negative
 
 **Command Dependencies:**
-- `load_deck` must always be the first command
-- The `attach_tip` command must be called before `aspirate_from`, `dispense_to`, or `drop_tip` commands
+- `load_deck` must always be the first command in any protocol
+- `attach_tip` must be called before any `aspirate_from`, `dispense_to`, or `drop_tip` commands
+- `aspirate_from` can only be performed on `polyelectric_8_wellplate_30000ul` labware
+- `dispense_to` can only be performed on the following labware types: `MEA_cell_MTP`, `polyelectric_8_wellplate_30000ul`, or `trash_bin`
+- `attach_tip` can only be performed on `tiprack` labware
+- `drop_tip` can only be performed on `trash_bin` labware
 
 ## Instructions
 

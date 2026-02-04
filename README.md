@@ -48,3 +48,4 @@ For more information, see the [OpenSkills documentation](https://github.com/numm
 When creating new skills, refer to the following guide:
 
 - [OpenSkills Example](https://github.com/numman-ali/openskills/blob/main/examples/my-first-skill/SKILL.md)
+- [andrej-karpathy-skills](https://github.com/forrestchang/andrej-karpathy-skills)
