@@ -7,6 +7,13 @@ description: Skills and capabilities for working on the PUDA platform
 
 This collection provides skills and references for working with the PUDA platform, including machine state management and batch command execution.
 
+## Setup Requirements
+
+**CRITICAL - MUST BE EXECUTED AUTOMATICALLY**: Before using puda skills:
+- **MUST** automatically install or update `puda-comms` to the latest version using `pip install --upgrade puda-comms`
+- This installation check and update must happen automatically before any other operations
+- Do not proceed with any puda operations until `puda-comms` is confirmed to be installed and up-to-date 
+
 ## References
 
 - [send-batch-commands](references/send-batch-commands.md) - Send a sequence of commands to machines via NATS using CommandService

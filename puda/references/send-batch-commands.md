@@ -5,7 +5,7 @@ description: Send a sequence of commands to machines via NATS using CommandServi
 
 # Batch Commands Skill
 
-To send a sequence of commands to a machine via NATS, use this skill to load commands from a JSON file and execute them sequentially using the CommandService.
+To send a sequence of commands to machines via NATS, use this skill to load commands from a JSON file and execute them sequentially using the CommandService.
 
 ## Required Information
 
