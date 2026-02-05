@@ -3,7 +3,7 @@ name: command-generator
 description: Generate structured JSON commands for Biologic electrochemical testing devices from natural language lab instructions. Use when users need to convert electrochemical test workflows into executable Biologic device command sequences.
 ---
 
-# Biologic Machine Protocol Generator
+# Biologic Machine Command Generator
 
 Convert natural language electrochemical test protocol instructions into structured JSON commands for Biologic device automation.
 
@@ -64,29 +64,35 @@ To generate a protocol from natural language instructions:
 
 5. **Validate parameters**: Ensure all command parameters match the specifications from the available-commands.py script.
 
-6. **Return structured JSON**: Output a valid JSON object with the command structure.
+6. **Return structured JSON**: Output a valid JSON array of command objects.
 
 ## Output Format
 
-Return the answer as a valid JSON object with the following structure:
+Return the answer as a valid JSON array of command objects with the following structure:
 
 ```json
-{
-    "command": "OCV",
-    "params": {
-        "time": 60,
-        "time_interval": 1,
-        "voltage_interval": 0.01
-    },
-    "kwargs": {
-        "channels": [0],
-        "retrieve_data": true
+[
+    {
+        "step_number": 1,
+        "name": "OCV",
+        "machine_id": "biologic",
+        "params": {
+            "time": 60,
+            "time_interval": 1,
+            "voltage_interval": 0.01
+        },
+        "kwargs": {
+            "channels": [0],
+            "retrieve_data": true
+        }
     }
-}
+]
 ```
 
-The JSON object must include:
-- `command`: Valid command name from the available commands
+Each command object must include:
+- `step_number`: Sequential integer starting from 1
+- `name`: Valid command name from the available commands
+- `machine_id`: ID of the machine the command is being sent to
 - `params`: Object containing all required and optional parameters for the specific test method
 - `kwargs`: Optional object containing additional keyword arguments (channels, retrieve_data, data, by_channel, cv, folder, etc.)
 

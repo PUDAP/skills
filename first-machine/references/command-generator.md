@@ -68,6 +68,7 @@ Return the answer as a valid JSON array of command objects with the following st
     {
         "step_number": 1,
         "name": "command_name",
+        "machine_id" "first",
         "params": {
             "param1": "value1",
             "param2": "value2"
@@ -78,6 +79,7 @@ Return the answer as a valid JSON array of command objects with the following st
 
 Each command object must include:
 - `step_number`: Sequential integer starting from 1
+- `machine_id`: ID of the machine the command is being sent to
 - `name`: Valid command name from the commands resource
 - `params`: Object containing all required and optional parameters for the command
 
