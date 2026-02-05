@@ -26,8 +26,6 @@ Before generating any commands, consult the following scripts to understand avai
 - **scripts/available-labware.py** - Lists all available labware types and their specifications
 - **scripts/available-commands.py** - Describes all available commands, their parameters, and usage
 
-**Important**: Before running these scripts, ensure the required Python packages are installed. 
-
 ### Rules and Restrictions
 
 The following rules must be followed when generating commands:
@@ -51,17 +49,15 @@ The following rules must be followed when generating commands:
 
 To generate a protocol from natural language instructions:
 
-1. **Install dependencies**: Ensure the required Python package `puda_drivers` is installed by running `pip install puda_drivers` before executing any scripts.
+1. **Consult resources first**: Run the available-labware.py and available-commands.py scripts to review labware types and command specifications before generating any protocol.
 
-2. **Consult resources first**: Run the available-labware.py and available-commands.py scripts to review labware types and command specifications before generating any protocol.
+2. **Follow rules**: Adhere to command rules specified in the rules section above. Order commands correctly based on their dependencies.
 
-3. **Follow rules**: Adhere to command rules specified in the rules section above. Order commands correctly based on their dependencies.
+3. **Validate parameters**: Ensure all command parameters match the specifications from the available-commands.py script and that labware references exist in the available-labware.py output.
 
-4. **Validate parameters**: Ensure all command parameters match the specifications from the available-commands.py script and that labware references exist in the available-labware.py output.
+4. **Check slot restrictions**: Verify that deck slots used in commands are in the available_slots list and respect any command_restrictions.
 
-5. **Check slot restrictions**: Verify that deck slots used in commands are in the available_slots list and respect any command_restrictions.
-
-6. **Return structured JSON**: Output a valid JSON array of command objects.
+5. **Return structured JSON**: Output a valid JSON array of command objects.
 
 ## Output Format
 

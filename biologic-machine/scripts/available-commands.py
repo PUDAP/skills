@@ -69,7 +69,8 @@ def get_available_commands_resource() -> str:
     commands = []
     
     # Get all public instance methods from the Biologic class (excluding private methods starting with _)
-    for name, method in inspect.getmembers(Biologic, predicate=inspect.ismethod):
+    # In Python 3, class methods are functions, not methods, so we use isfunction
+    for name, method in inspect.getmembers(Biologic, predicate=inspect.isfunction):
         if not name.startswith('_'):
             # Get method signature
             sig = inspect.signature(method)

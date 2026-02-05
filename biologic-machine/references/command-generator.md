@@ -25,8 +25,6 @@ Before generating any commands, consult the following script to understand avail
 
 - **scripts/available-commands.py** - Describes all available commands, their parameters, and usage
 
-**Important**: Before running this script, ensure the required Python packages are installed (`easy_biologic` and access to the BiologicMachine class).
-
 ## Available Commands
 
 The BiologicMachine supports the following electrochemical test methods:
