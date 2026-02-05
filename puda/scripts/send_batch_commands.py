@@ -9,7 +9,6 @@ as command-line arguments.
 Usage:
     python send_batch_commands.py [--user-id USER_ID] [--username USERNAME] 
                                   [--nats-servers SERVERS] [--commands-file FILE]
-                                  [--machine-id MACHINE_ID]
 """
 
 import json
@@ -56,7 +55,6 @@ async def send_batch_commands(
     user_id: str,
     username: str,
     nats_servers: list[str],
-    machine_id: str,
     timeout: int = 120
 ) -> bool:
     """
@@ -67,7 +65,6 @@ async def send_batch_commands(
     logger.info("Starting batch command execution")
     logger.info("Commands file: %s", commands_file)
     logger.info("User: %s (%s)", username, user_id)
-    logger.info("Machine: %s", machine_id)
     logger.info("NATS servers: %s", nats_servers)
     
     # Generate unique run_id for this execution
@@ -98,7 +95,6 @@ async def send_batch_commands(
             
             reply: NATSMessage = await service.send_queue_commands(
                 requests=requests,
-                machine_id=machine_id,
                 run_id=run_id,
                 user_id=user_id,
                 username=username,
@@ -183,15 +179,14 @@ def main():
         epilog="""
 Examples:
   # With .env file configured
-  python send_batch_commands.py --commands-file commands.json --machine-id first
+  python send_batch_commands.py --commands-file commands.json
   
   # Full command line (overrides .env values)
   python send_batch_commands.py \\
     --user-id "550e8400-e29b-41d4-a716-446655440000" \\
     --username "john_doe" \\
     --nats-servers "nats://host1:4222,nats://host2:4222" \\
-    --commands-file commands.json \\
-    --machine-id first
+    --commands-file commands.json
         """
     )
     
@@ -217,13 +212,6 @@ Examples:
         "--commands-file",
         type=Path,
         help="Path to JSON file containing array of commands"
-    )
-    
-    parser.add_argument(
-        "--machine-id",
-        type=str,
-        default="first",
-        help="Machine ID (default: 'first')"
     )
     
     parser.add_argument(
@@ -262,7 +250,6 @@ Examples:
         user_id=user_id,
         username=username,
         nats_servers=nats_servers,
-        machine_id=args.machine_id,
         timeout=args.timeout
     ))
     

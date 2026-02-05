@@ -27,7 +27,6 @@ NATS_SERVERS=nats://100.86.162.126:4222,nats://100.86.162.126:4223,nats://100.86
 Additionally, the following information is required at runtime:
 
 4. **commands_file**: Path to a JSON file containing an array of command objects
-5. **machine_id**: Machine ID to send commands to (must be explicitly provided, do not default to "first")
 
 ## Execution Process
 
@@ -37,7 +36,6 @@ When executing batch commands, directly run the `send_batch_commands.py` script 
 
 2. Execute the script at `scripts/send_batch_commands.py` with the following arguments:
    - `--commands-file`: Path to the JSON commands file (required)
-   - `--machine-id`: Machine ID (defaults to "first" if not provided)
    - `--timeout`: Optional timeout per command in seconds (defaults to 120)
    - `--user-id`: Optional override for USER_ID from .env
    - `--username`: Optional override for USERNAME from .env
