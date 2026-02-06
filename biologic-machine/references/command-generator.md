@@ -59,7 +59,8 @@ To generate a protocol from natural language instructions:
 4. **Extract parameters**: Parse the natural language instructions to extract:
    - Test method name
    - Test-specific parameters (time, voltage, current, frequencies, etc.)
-   - **Required parameters**: All parameters without default values must be explicitly provided
+   - **Required parameters**: Params tagged with [Required] is required
+   - **Optional parameters**: Params tagged with [Optional] is optional
    - kwargs (channels, retrieve_data)
 
 5. **Validate parameters**: Ensure all command parameters match the specifications from the available-commands.py script.
