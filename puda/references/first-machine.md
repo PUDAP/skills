@@ -42,7 +42,7 @@ The following rules must be **strictly followed** when generating First machine 
 - Use these slots for labware placement and operations
 
 ### Command Restrictions
-- **`move_electrode` restriction**: Cannot use deck slots A1, A2, A3, or A4
+- **`move_electrode` restriction**: Cannot use deck slots A1, B1 or C1
 - **`height_from_bottom` constraint**: Must be non-negative (≥ 0)
 
 ### Command Dependencies and Sequencing
