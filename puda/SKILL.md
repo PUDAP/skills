@@ -11,14 +11,16 @@ This collection provides skills for using the puda CLI tool to interact with lab
 
 **CRITICAL - MUST BE EXECUTED AUTOMATICALLY**: Before using any puda CLI commands:
 
-1. **Driver Installation**: **MUST** automatically install or update `puda-drivers` to the latest version:
+1. **Python and pip**: **MUST** Ensure `python3` and `pip` are installed. If not installed, install them before continuing execution
+
+2. **Environment Configuration**: **MUST** check for a `.env` file with `NATS_SERVERS` configured. If missing, ask the user for the NATS connection string(s) and create it (format: `NATS_SERVERS=nats://hostname:port` or comma-separated for multiple servers)
+
+3. **Driver Installation**: **MUST** automatically install or update `puda-drivers` to the latest version:
    ```bash
    pip install --upgrade puda-drivers
    ```
 
-2. **Verification**: Confirm installation success before proceeding with any puda CLI operations
-
-3. **Timing**: This installation check and update must happen automatically before any other operations - do not proceed until `puda-drivers` is confirmed to be installed and up-to-date
+4. **Verification**: Confirm installation success before proceeding with any puda CLI operations
 
 ## Using the puda CLI
 
