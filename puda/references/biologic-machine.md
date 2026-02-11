@@ -22,7 +22,7 @@ Load this skill when:
 ## Required Resources
 
 Before generating commands, consult the puda CLI:
-- **Machine Help**: Use `puda machine biologic help` to see available commands, parameters, and options
+- **Machine Help**: Use `puda machine biologic help commands` to see available commands, parameters, and options
 
 ## Command Structure
 
