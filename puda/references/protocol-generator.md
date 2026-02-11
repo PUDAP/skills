@@ -18,66 +18,53 @@ Load this skill when:
 - Validating protocol commands before execution
 - Converting structured JSON command sequences into executable protocols
 
-## Required Resources
-
-Before generating or sending protocols, consult the puda CLI:
-- **Protocol Help**: Run `puda nats protocol --help` for protocol operations
-- **Machine Help**: Use `puda machine [machine-id] help` for machine-specific commands
-
 ## Protocol Structure
 
 **Important**: A single protocol can contain commands for multiple machines. Each command specifies its own `machine_id`, allowing workflows that coordinate operations across different machines (e.g., liquid handling followed by electrochemical testing). Step numbers are sequential across all commands regardless of which machine they target.
 
-Protocols consist of structured JSON command sequences. Each command typically includes:
+Protocols are structured JSON objects with the following top-level fields:
+- `user_id`: User identifier string
+- `username`: Username string
+- `description`: Description of the protocol
+- `timestamp`: ISO 8601 timestamp string 
+- `commands`: Array of command objects
+
+Each command object in the `commands` array includes:
 - `step_number`: Sequential integer starting from 1 (increments across all commands regardless of machine)
-- `name`: Command name
-- `machine_id`: ID of the target machine for this specific command (e.g., `"first"`, `"biologic"`)
-- `params`: Command-specific parameters
-- `kwargs`: Optional keyword arguments
+- `name`: Command name (must be valid for the specified machine)
+- `machine_id`: ID of the target machine for this specific command 
+- `params`: Object containing all required and optional parameters for the specific command
+- `kwargs`: Optional object containing additional keyword arguments 
+
+## Command Generation
+
+**CRITICAL**: When generating commands for a protocol, **MUST** read the relevant machine reference document first:
+- For First machine commands: Read [first-machine](references/first-machine.md)
+- For Biologic machine commands: Read [biologic-machine](references/biologic-machine.md)
+
+These documents contain the available commands, required parameters, labware definitions, and machine-specific constraints that must be followed.
 
 ## Instructions
 
-1. **Consult CLI**: Run `puda nats protocol --help` and `puda machine [machine-id] help` for relevant machines
+1. **Fetch User Info**: Run `puda config list` to get user_id and username
 
-2. **Generate Protocol**: Create JSON structure with sequential step numbers, correct `machine_id` for each command, and valid command names/parameters
+2. **Consult references**: Read the relevant machine documents for machine specific commands (see References section below)
 
-3. **Validate**: Use `puda nats protocol validate -f <file_name>` before sending
+3. **Generate Protocol**: Create a new JSON protocol file with the exact structure shown in the Output Format section. The filename should be descriptive and must end with `.json` extension.
 
-4. **Send**: Use `puda nats protocol` with appropriate flags to send via NATS
+4. **Validate**: Use `puda nats protocol validate -f <file_name>` before sending
 
 ## Output Format
 
-Return the answer as a valid JSON with the following structure. **Note: A protocol can contain commands for multiple machines** - each command specifies its own `machine_id`:
+Return the answer as a valid JSON with the following structure. **Note: A protocol can contain commands for multiple machines** - each command **must** specifies its own `machine_id`:
 
 ```json
 {
   "user_id": "zhao",
   "username": "zhao",
   "description": "description for this protocol",
-  "commands": [
-    {
-        "step_number": 1,
-        "name": "load_deck",
-        "machine_id": "first",
-        "params": {
-            "labware": {...}
-        }
-    },
-    {
-        "step_number": 2,
-        "name": "OCV",
-        "machine_id": "biologic",
-        "params": {
-            "time": 60,
-            "time_interval": 1,
-            "voltage_interval": 0.01
-        },
-        "kwargs": {
-            "channels": [0],
-            "retrieve_data": true
-        }
-    }
-  ]
+  "timestamp": "2026-02-10T18:01:46Z",
+  "commands": []
 }
 ```
 
@@ -88,12 +75,14 @@ Each command object must include:
 - `params`: Object containing all required and optional parameters for the specific command
 - `kwargs`: Optional object containing additional keyword arguments (channels, retrieve_data, data, by_channel, cv, folder, etc.)
 
-
-
 ## Best Practices
 
 - **Multi-machine support**: Protocols can contain commands for multiple machines - ensure each command has the correct `machine_id` (`"first"` or `"biologic"`)
 - **Sequential steps**: Step numbers must be sequential (1, 2, 3...) across all commands regardless of machine
-- **Validate first**: Always validate protocol structure before sending
-- **Command dependencies**: Respect dependencies (e.g., `load_deck` first for First machine, `attach_tip` before liquid operations)
+- **Validate**: Always validate protocol structure after creating it, fix any errors that appear
+- **Command dependencies**: Respect dependencies for specific machines
 
+## References
+
+- **[first-machine](references/first-machine.md)** - Generate commands for First machine liquid handling robots
+- **[biologic-machine](references/biologic-machine.md)** - Generate commands for Biologic electrochemical testing devices

@@ -22,20 +22,22 @@ Load this skill when:
 ## Required Resources
 
 Before generating commands, consult the puda CLI:
-- **Machine Help**: Use `puda machine first help` to see available commands and parameters
+- **Labware Help**: Use `puda machine first help labware` to see available labware and wells
+- **Commands Help**: Use `puda machine first help commands` to see available commands and parameters
 
 ## Command Structure
 
 Each First machine command follows the standard protocol command structure (see protocol-generator reference). Key First-specific details:
 
 - `machine_id`: Must be `"first"` (string)
-- `name`: Command name (e.g., `load_deck`, `attach_tip`, `aspirate_from`, `dispense_to`, `move_electrode`, `drop_tip`)
-- `params`: Command-specific parameters (consult CLI help)
-- `kwargs`: Optional keyword arguments
 
 ## Rules and Restrictions
 
-The following rules must be **strictly followed** when generating First machine commands:
+The following rules **must** be strictly followed when generating First machine commands:
+
+### Handling Missing Information
+
+If any information is missing from the user's request, **do not assume or guess values**. Use a placeholder value (e.g., `"PLACEHOLDER"` or `"?"`) in the command and explicitly ask the user to provide the missing information
 
 ### Available Deck Slots
 - **Valid deck slots**: A1, A2, A3, A4, B1, B2, B3, B4, C1, C2, C3, C4
@@ -48,8 +50,9 @@ The following rules must be **strictly followed** when generating First machine 
 ### Command Dependencies and Sequencing
 
 **Critical sequencing rules:**
-1. **`load_deck`**: Must always be the **first** First machine command in any protocol. Use `puda machine first help labware` to discover available labware types and their parameters for the `load_deck` command.
-2. **`attach_tip`**: Must be called before any `aspirate_from`, `dispense_to`, or `drop_tip` commands
+1. **`home`**: Must always be the **very first** First machine command in any protocol, before any other operations
+2. **`load_deck`**: Must always be executed after `home` and before any other First machine commands. Use `puda machine first help labware` to discover available labware types and the required parameters
+3. **`attach_tip`**: Must be called before any `aspirate_from`, `dispense_to`, or `drop_tip` commands
 
 **Labware compatibility:**
 - **`aspirate_from`**: Can only be performed on `polyelectric_8_wellplate_30000ul` labware
@@ -60,20 +63,11 @@ The following rules must be **strictly followed** when generating First machine 
 - **`attach_tip`**: Can only be performed on `tiprack` labware
 - **`drop_tip`**: Can only be performed on `trash_bin` labware
 
-### Common Command Flow Pattern
-```
-1. load_deck (required first)
-2. attach_tip (required before liquid operations)
-3. aspirate_from (from polyelectric_8_wellplate_30000ul)
-4. dispense_to (to compatible labware)
-5. drop_tip (to trash_bin)
-```
-
 ## Instructions
 
 1. **Consult CLI**: Run `puda machine first help` to review available commands and parameters
 
-2. **Verify sequencing**: Ensure `load_deck` is ran before any commands and `attach_tip` precedes liquid operations
+2. **Verify sequencing**: Follow the critical sequencing rules in the "Command Dependencies and Sequencing" section above
 
 3. **Generate command**: Create a command object with `machine_id: "first"`, appropriate `name`, `params`, and optional `kwargs`
 
@@ -81,7 +75,7 @@ The following rules must be **strictly followed** when generating First machine 
 
 ## Best Practices
 
-- **Sequencing**: Ensure `load_deck` is always the first First machine command, and `attach_tip` precedes liquid operations
 - **Machine ID**: Always set `machine_id` to `"first"` (string)
 - **Deck slots**: Use valid slots and respect restrictions (e.g., `move_electrode` cannot use A1-A4)
 - **Constraints**: Ensure non-negative `height_from_bottom` and compatible labware types
+- **Sequencing**: Refer to the "Command Dependencies and Sequencing" section for required command order

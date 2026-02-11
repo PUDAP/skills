@@ -13,34 +13,39 @@ This collection provides skills for using the puda CLI tool to interact with lab
 
 1. **Python and pip**: **MUST** Ensure `python3` and `pip` are installed. If not installed, install them before continuing execution
 
-2. **Environment Configuration**: **MUST** check for a `.env` file with `NATS_SERVERS` configured. If missing, ask the user for the NATS connection string(s) and create it (format: `NATS_SERVERS=nats://hostname:port` or comma-separated for multiple servers)
-
-3. **Driver Installation**: **MUST** automatically install or update `puda-drivers` to the latest version:
+2. **Driver Installation**: **MUST** automatically install or update `puda-drivers` to the latest version:
    ```bash
    pip install --upgrade puda-drivers
    ```
 
-4. **Verification**: Confirm installation success before proceeding with any puda CLI operations
+3. **Verification**: Confirm installation success before proceeding with any puda CLI operations
 
 ## Using the puda CLI
 
 You have access to the puda CLI tool. Follow this systematic approach to use it successfully:
 
-### Discovery Workflow
+- **Machine-Specific Help**: For machine operations, always use `puda machine [machine-id] help` for more context
 
-1. **Explore Top Level**: Always start by running `puda -h` or `puda --help` to see available modules and top-level commands
+- **Protocol Operations**: Use `puda nats protocol` to understand protocol generation, validation, and transmission options
 
-2. **Drill Down**: Use `puda [subcommand] --help` to find specific flags and options for the task at hand
+### Protocol Generation
 
-3. **Machine-Specific Help**: For machine operations, always use `puda machine [machine-id] help` for more context
+**CRITICAL**: When generating protocols, **MUST** read the **[protocol-generator](references/protocol-generator.md)** reference document first. This document contains:
+- Protocol structure requirements and format specifications
+- Step numbering rules (sequential across all commands regardless of machine)
+- Multi-machine protocol support details
+- Required fields and command structure
+- Validation procedures
 
-4. **Protocol Operations**: Use `puda nats protocol --help` to understand protocol generation, validation, and transmission options
+Always consult the protocol-generator reference before creating any protocol JSON structure.
+
+### Sending protocol
+
+- Always use `puda nats protocol send -f <file_path>` to send nats protocol
 
 ### Validation and Safety
 
 - **Flag Verification**: Before suggesting or running any command, verify that the flags you are using exist in the help documentation
-- **Parameter Validation**: Check parameter requirements and constraints before generating commands
-- **Protocol Validation**: Always validate protocol structure using `puda nats protocol validate -f <file_name>` before sending
 
 ### Output Handling
 
@@ -56,6 +61,7 @@ You have access to the puda CLI tool. Follow this systematic approach to use it 
 
 ## Best Practices
 
+- **Read protocol-generator reference**: **MUST** read the [protocol-generator](references/protocol-generator.md) reference document before generating any protocols to ensure correct structure and format
 - **Always consult CLI help**: Run `puda [subcommand] --help` before executing commands to verify available flags and options
 - **Use machine-specific help**: Run `puda machine [machine-id] help` to discover available commands, labware, and parameters
 - **Validate before sending**: Use `puda nats protocol validate` to check protocol structure before transmission
