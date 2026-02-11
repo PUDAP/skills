@@ -21,7 +21,7 @@ Load this skill when:
 
 ## Required Resources
 
-Before generating commands, consult the puda CLI:
+Before generating commands, **always** consult the puda CLI:
 - **Labware Help**: Use `puda machine first help labware` to see available labware and wells
 - **Commands Help**: Use `puda machine first help commands` to see available commands and parameters
 
@@ -37,7 +37,8 @@ The following rules **must** be strictly followed when generating First machine 
 
 ### Handling Missing Information
 
-If any information is missing from the user's request, **do not assume or guess values**. Use a placeholder value (e.g., `"PLACEHOLDER"` or `"?"`) in the command and explicitly ask the user to provide the missing information
+- If any information is missing from the user's request, **do not assume or guess values**. Use a placeholder value (e.g., `"PLACEHOLDER"` or `"?"`) in the command and explicitly ask the user to provide the missing information.
+- If the labware only has one well (e.g., "A1"), then it is safe to assume that well name is "A1" without asking the user
 
 ### Available Deck Slots
 - **Valid deck slots**: A1, A2, A3, A4, B1, B2, B3, B4, C1, C2, C3, C4
@@ -48,6 +49,8 @@ If any information is missing from the user's request, **do not assume or guess 
 - **`height_from_bottom` constraint**: Must be non-negative (≥ 0)
 
 ### Command Dependencies and Sequencing
+
+**Important**: If the user's request contains invalid commands, incompatible labware, incorrect sequencing, or violates any constraints described in this document, **do not blindly follow the request**. Instead, identify the specific issue and clearly explain to the user what is wrong and why it cannot be executed.
 
 **Critical sequencing rules:**
 1. **`home`**: Must always be the **very first** First machine command in any protocol, before any other operations
