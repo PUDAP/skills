@@ -21,9 +21,13 @@ Load this skill when:
 
 ## Required Resources
 
-Before generating commands, **always** consult the puda CLI:
-- **Labware Help**: Use `puda machine first help labware` to see available labware and wells
-- **Commands Help**: Use `puda machine first help commands` to see available commands and parameters
+**IMPORTANT**: Before generating any commands, **always consult these resources**:
+
+1. **Consult CLI**: Run `puda machine first help` to review available commands and parameters
+2. **Labware Help**: Use `puda machine first help labware` to see available labware and wells
+3. **Commands Help**: Use `puda machine first help commands` to see available commands and parameters
+
+**Do not generate commands without first consulting these resources** to ensure accuracy and compatibility.
 
 ## Command Structure
 
@@ -68,17 +72,8 @@ The following rules **must** be strictly followed when generating First machine 
 
 ## Instructions
 
-1. **Consult CLI**: Run `puda machine first help` to review available commands and parameters
+1. **Consult Resources**: Consult the resources listed in the "Required Resources" section above before generating any commands. 
 
-2. **Verify sequencing**: Follow the critical sequencing rules in the "Command Dependencies and Sequencing" section above
+2. **Verify sequencing and constraints**: **Always** verify that commands follow all rules in the "Rules and Restrictions" section, including: critical sequencing (home → load_deck → attach_tip), valid deck slots, labware compatibility, command restrictions, and proper handling of missing information
 
 3. **Generate command**: Create a command object with `machine_id: "first"`, appropriate `name`, `params`, and optional `kwargs`
-
-4. **Validate constraints**: Verify deck slots, non-negative `height_from_bottom`, and labware compatibility
-
-## Best Practices
-
-- **Machine ID**: Always set `machine_id` to `"first"` (string)
-- **Deck slots**: Use valid slots and respect restrictions (e.g., `move_electrode` cannot use A1-A4)
-- **Constraints**: Ensure non-negative `height_from_bottom` and compatible labware types
-- **Sequencing**: Refer to the "Command Dependencies and Sequencing" section for required command order

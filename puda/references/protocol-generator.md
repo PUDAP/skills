@@ -23,6 +23,7 @@ Load this skill when:
 **Important**: A single protocol can contain commands for multiple machines. Each command specifies its own `machine_id`, allowing workflows that coordinate operations across different machines (e.g., liquid handling followed by electrochemical testing). Step numbers are sequential across all commands regardless of which machine they target.
 
 Protocols are structured JSON objects with the following top-level fields:
+- `protocol_id`: UUID string
 - `user_id`: User identifier string
 - `username`: Username string
 - `description`: Description of the protocol
@@ -48,11 +49,17 @@ These documents contain the available commands, required parameters, labware def
 
 1. **Fetch User Info**: Run `puda config list` to get user_id and username
 
-2. **Consult references**: Read the relevant machine documents for machine specific commands (see References section below)
+2. **Generate Protocol ID**: Generate a UUID for the protocol_id using Python:
+   ```python
+   import uuid
+   print(uuid.uuid4())
+   ```
 
-3. **Generate Protocol**: Create a new JSON protocol file with the exact structure shown in the Output Format section. The filename should be descriptive and must end with `.json` extension.
+3. **Consult references**: Read the relevant machine documents for machine specific commands (see References section below)
 
-4. **Validate**: Use `puda nats protocol validate -f <file_name>` before sending
+4. **Generate Protocol**: Create a new JSON protocol file with the exact structure shown in the Output Format section. The filename should be descriptive and must end with `.json` extension.
+
+5. **Validate**: Use `puda nats protocol validate -f <file_name>` before sending
 
 ## Output Format
 
@@ -60,6 +67,7 @@ Return the answer as a valid JSON with the following structure. **Note: A protoc
 
 ```json
 {
+  "protocol_id": "550e8400-e29b-41d4-a716-446655440000",
   "user_id": "zhao",
   "username": "zhao",
   "description": "description for this protocol",
