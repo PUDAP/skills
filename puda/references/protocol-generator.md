@@ -57,7 +57,7 @@ These documents contain the available commands, required parameters, labware def
 
 3. **Consult references**: Read the relevant machine documents for machine specific commands (see References section below)
 
-4. **Generate Protocol**: Create a new JSON protocol file with the exact structure shown in the Output Format section. The filename should be descriptive and must end with `.json` extension.
+4. **Generate Protocol**: Create a new JSON protocol file with the exact structure shown in the Output Format section. Save protocol files under the **`/protocols`** directory in the project root. The filename should be descriptive and must end with `.json` extension.
 
 5. **Validate**: Use `puda nats protocol validate -f <file_name>` before sending
 
