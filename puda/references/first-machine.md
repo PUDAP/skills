@@ -59,7 +59,8 @@ The following rules **must** be strictly followed when generating First machine 
 **Critical sequencing rules:**
 1. **`home`**: Must always be the **very first** First machine command in any protocol, before any other operations
 2. **`load_deck`**: Must always be executed after `home` and before any other First machine commands. Use `puda machine first help labware` to discover available labware types and the required parameters
-3. **`attach_tip`**: Must be called before any `aspirate_from`, `dispense_to`, or `drop_tip` commands
+3. **`attach_tip`**: May only occur before `drop_tip`; must be called before any `aspirate_from` or `dispense_to` that use the tip
+4. **`drop_tip`**: May only occur after `attach_tip`; workflows must always end without a tip attached
 
 **Labware compatibility:**
 - **`aspirate_from`**: Can only be performed on `polyelectric_8_wellplate_30000ul` labware
@@ -74,6 +75,6 @@ The following rules **must** be strictly followed when generating First machine 
 
 1. **Consult Resources**: Consult the resources listed in the "Required Resources" section above before generating any commands. 
 
-2. **Verify sequencing and constraints**: **Always** verify that commands follow all rules in the "Rules and Restrictions" section, including: critical sequencing (home → load_deck → attach_tip), valid deck slots, labware compatibility, command restrictions, and proper handling of missing information
+2. **Verify sequencing and constraints**: **Always** verify that commands follow all rules in the "Rules and Restrictions" section, including: critical sequencing (home → load_deck → attach_tip → … → drop_tip so the workflow ends with no tip attached), valid deck slots, labware compatibility, command restrictions, and proper handling of missing information
 
 3. **Generate command**: Create a command object with `machine_id: "first"`, appropriate `name`, `params`, and optional `kwargs`
