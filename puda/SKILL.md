@@ -53,6 +53,22 @@ Always consult the protocol-generator reference before creating any protocol JSO
 - **Error Detection**: Check for error messages or warnings in command output
 - **Status Confirmation**: Verify that operations completed successfully before proceeding
 
+## Experiment tracking
+
+**CRITICAL**: Persist all experiment-related state so runs are reproducible and auditable.
+
+- **Initialization**: Running `puda init` creates an **`experiment.md`** file in the project root. Use it as the single place to record everything about the current experiment.
+
+- **What to record in `experiment.md`**:
+  - **Logs**: Use explicit markdown links to log files, e.g. `[<run_id>](logs/<run_id>.log)`. Add a new log link each time a protocol is run.
+  - **Protocols**: Use explicit markdown links to protocol files. In the "Protocols" section, list each as `[<protocol_id>](protocols/<protocol_id>.json)` with an optional short description after the link (e.g. `[<protocol_id>](protocols/<protocol_id>.json) — changed dispense amount to 100ul in step 10`).
+  - **History**: A chronological log of actions with ISO 8601 timestamps. **MUST** use the actual current time for each entry—never guess or use a placeholder. Before writing a history line, run `date -u +%Y-%m-%dT%H:%M:%SZ` to get the real timestamp and use that value. Use explicit markdown links for all file paths. Append one line per action in this form:
+    - `<timestamp> created [<protocol_id>](protocols/<protocol_id>.json)`
+    - `<timestamp> updated [<old_protocol_id>](protocols/<old_protocol_id>.json) to [<new_protocol_id>](protocols/<new_protocol_id>.json)`
+    - `<timestamp> ran [<protocol_id>](protocols/<protocol_id>.json) — logs: [<log_id>](logs/<log_id>.log)`
+
+- **When to update**: After creating a protocol file, after updating/deriving a new protocol, and after every protocol run (append the run entry and the new log path).
+
 ## References
 
 - **[database-query](references/database-query.md)** - Query database using SQL and puda cli
@@ -67,3 +83,4 @@ Always consult the protocol-generator reference before creating any protocol JSO
 - **Use machine-specific help**: Run `puda machine [machine-id] help` to discover available commands, labware, and parameters
 - **Validate before sending**: Use `puda nats protocol validate` to check protocol structure before transmission
 - **Parse output**: Extract information from command output to verify success and gather necessary data
+- **Update experiment tracking**: After creating/updating protocols or running them, append the action and any log path to `experiment.md` (and `protocol.json` if used) per the Experiment tracking section

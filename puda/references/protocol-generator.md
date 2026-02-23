@@ -49,15 +49,17 @@ These documents contain the available commands, required parameters, labware def
 
 1. **Fetch User Info**: Run `puda config list` to get user_id and username
 
-2. **Generate Protocol ID**: Generate a UUID for the protocol_id using Python:
+2. **Generate Protocol ID and datetime**: Run the following in Python to get both the protocol_id (UUID) and current datetime in ISO format:
    ```python
    import uuid
-   print(uuid.uuid4())
+   from datetime import datetime, timezone
+   print("protocol_id:", uuid.uuid4())
+   print("datetime:", datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
    ```
 
 3. **Consult references**: Read the relevant machine documents for machine specific commands (see References section below)
 
-4. **Generate Protocol**: Create a new JSON protocol file with the exact structure shown in the Output Format section. Save protocol files under the **`/protocols`** directory in the project root. The filename should be descriptive and must end with `.json` extension.
+4. **Generate Protocol**: Create a new JSON protocol file with the exact structure shown in the Output Format section. Save protocol files under the **`/protocols`** directory in the project root. The filename should be the protocol_id and must end with `.json` extension. **When modifying a protocol, always create a new protocol file and a new protocol_id** — do not overwrite or reuse an existing protocol file or id.
 
 5. **Validate**: Use `puda nats protocol validate -f <file_name>` before sending
 
@@ -67,11 +69,11 @@ Return the answer as a valid JSON with the following structure. **Note: A protoc
 
 ```json
 {
-  "protocol_id": "550e8400-e29b-41d4-a716-446655440000",
+  "protocol_id": "<protocol_id>",
   "user_id": "zhao",
   "username": "zhao",
   "description": "description for this protocol",
-  "timestamp": "2026-02-10T18:01:46Z",
+  "timestamp": "<datetime>",
   "commands": []
 }
 ```
@@ -85,6 +87,7 @@ Each command object must include:
 
 ## Best Practices
 
+- **Modifying protocols**: Always create a new protocol file and a new protocol_id when modifying a protocol; never overwrite or reuse an existing protocol file or id.
 - **Multi-machine support**: Protocols can contain commands for multiple machines - ensure each command has the correct `machine_id` (`"first"` or `"biologic"`)
 - **Sequential steps**: Step numbers must be sequential (1, 2, 3...) across all commands regardless of machine
 - **Validate**: Always validate protocol structure after creating it, fix any errors that appear
