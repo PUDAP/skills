@@ -55,6 +55,7 @@ Always consult the protocol-generator reference before creating any protocol JSO
 
 ## References
 
+- **[database-query](references/database-query.md)** - Query database using SQL and puda cli
 - **[protocol-generator](references/protocol-generator.md)** - Generate, validate, and send puda protocols using the puda CLI
 - **[first-machine](references/first-machine.md)** - Generate commands for First machine liquid handling robots using the puda CLI
 - **[biologic-machine](references/biologic-machine.md)** - Generate commands for Biologic electrochemical testing devices using the puda CLI

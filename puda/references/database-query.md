@@ -26,6 +26,8 @@ Load this skill when:
 
 Do not assume table or column names; confirm them with `puda db schema` first.
 
+**When getting data from biologic machine command**: data is always in `payload` at `payload["response"]["data"]["0"]`.
+
 ## Commands
 
 - **`puda db schema`** – Print database schema (tables and columns). Use to understand structure before writing SQL.
