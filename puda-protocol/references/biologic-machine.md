@@ -82,4 +82,3 @@ Each test method has specific parameter requirements in `params`. Consult the pu
 - **Machine ID**: Always set `machine_id` to `"biologic"` (string)
 - **Test selection**: Choose the appropriate test method based on measurement requirements
 - **Parameter completeness**: Include all required parameters for each test type in `params`
-

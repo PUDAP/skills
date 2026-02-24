@@ -1,24 +1,49 @@
 ---
 name: puda
-description: Skills for using the puda CLI tool to generate protocols, interact with machines, and manage automated workflows
+description: Setup a Puda project, CLI installation, and project/experiment structure. Use when initializing a Puda project, puda experiment, or when updating skills is needed
 ---
 
-# PUDA CLI Skills
+## Puda Project Setup
 
-This collection provides skills for using the puda CLI tool to interact with laboratory automation equipment, generate protocols, and manage machine operations.
+Before running any puda commands:
 
-## Setup Requirements
+1. **Check installation**: Determine how to invoke the CLI — use `puda` if installed globally, or `./puda` from the project root if only a local binary exists. If it's missing, direct the user to the [Puda releases page](https://github.com/PUDAP/puda/releases). Use that same invocation (`puda` or `./puda`) consistently in all steps below.
+2. **Ensure Python/pip and puda-drivers**: Ensure `python3` and `pip` are available; install them first if missing. Then install or upgrade the `puda-drivers` package: `pip install --upgrade puda-drivers`.
+3. **Login**: Log in to puda with `puda auth login`; you will need to enter a username.
+4. **New project**: For a new project, run `puda init` in the target directory (e.g. `puda init .` or `puda init <folder_name>`).
+5. **Install skills**: Install skills using `puda skills install`.
 
-**CRITICAL - MUST BE EXECUTED AUTOMATICALLY**: Before using any puda CLI commands:
+Only after the CLI is installed and the project is initialized, proceed with protocol generation, machine commands, or experiment workflows.
 
-1. **Python and pip**: **MUST** Ensure `python3` and `pip` are installed. If not installed, install them before continuing execution
+## Project folder structure
 
-2. **Driver Installation**: **MUST** automatically install or update `puda-drivers` to the latest version:
+**Project root** contains `agents.md`, skills, `puda.config` and `puda.db` (created by `puda init` or `./puda init`).
+
+**Experiments** live as **folders** under the project root. Each experiment folder is named with the experiment’s **UUID** (generated in the “New puda experiment” flow).
+
+Inside each experiment folder:
+
+- **experiment.md** — single source of truth (maintained by the **puda-memory** skill)
+- **protocols/** — store all generated protocol files (created by **puda-protocol-gen**)
+- **logs/** — store log files from runs
+
+## New puda experiment
+
+When starting a new experiment:
+
+1. Generate a unique UUID for the experiment:
    ```bash
-   pip install --upgrade puda-drivers
+   python -c "import uuid; print(uuid.uuid4())"
    ```
+2. Create an experiment folder under the project root. **Name the folder with the UUID from step 1** (e.g. `a1b2c3d4-e5f6-7890-abcd-ef1234567890`).
+3. Create **experiment.md** in the experiment folder root with the UUID and the experiment objective. Use the **puda-memory** skill; if the user has not provided an objective, ask them for it before creating the file. Template:
 
-3. **Verification**: Confirm installation success before proceeding with any puda CLI operations
+   ```markdown
+   # Experiment
+
+   experiment_id: <uuid-from-step-1>
+   objective: <objective>
+   ```
 
 ## Updating puda skills
 
@@ -27,68 +52,4 @@ To refresh or update puda skills:
 ```bash
 puda skills update
 ```
-
-## Using the puda CLI
-
-You have access to the puda CLI tool. Follow this systematic approach to use it successfully:
-
-- **Machine-Specific Help**: For machine operations, always use `puda machine [machine-id] help` for more context
-
-- **Protocol Operations**: Use `puda nats protocol` to understand protocol generation, validation, and transmission options
-
-### Protocol Generation
-
-**CRITICAL**: When generating protocols, **MUST** read the **[protocol-generator](references/protocol-generator.md)** reference document first. This document contains:
-- Protocol structure requirements and format specifications
-- Step numbering rules (sequential across all commands regardless of machine)
-- Multi-machine protocol support details
-- Required fields and command structure
-- Validation procedures
-
-Always consult the protocol-generator reference before creating any protocol JSON structure.
-
-### Sending protocol
-
-- Always use `puda nats protocol send -f <file_path>` to send nats protocol
-
-### Validation and Safety
-
-- **Flag Verification**: Before suggesting or running any command, verify that the flags you are using exist in the help documentation
-
-### Output Handling
-
-- **Parse Output**: Parse the output of puda commands to confirm success or extract IDs/values needed for subsequent steps
-- **Error Detection**: Check for error messages or warnings in command output
-- **Status Confirmation**: Verify that operations completed successfully before proceeding
-
-## Experiment tracking
-
-**CRITICAL**: Persist all experiment-related state so runs are reproducible and auditable.
-
-- **Initialization**: Running `puda init` creates an **`experiment.md`** file in the project root. Use it as the single place to record everything about the current experiment.
-
-- **What to record in `experiment.md`**:
-  - **Logs**: Use explicit markdown links to log files, e.g. `[<run_id>](logs/<run_id>.log)`. Add a new log link each time a protocol is run.
-  - **Protocols**: Use explicit markdown links to protocol files. In the "Protocols" section, list each as `[<protocol_id>](protocols/<protocol_id>.json)` with an optional short description after the link (e.g. `[<protocol_id>](protocols/<protocol_id>.json) — changed dispense amount to 100ul in step 10`).
-  - **History**: A chronological log of actions with ISO 8601 timestamps. **MUST** use the actual current time for each entry—never guess or use a placeholder. Before writing a history line, run `date -u +%Y-%m-%dT%H:%M:%SZ` to get the real timestamp and use that value. Use explicit markdown links for all file paths. Append one line per action in this form:
-    - `<timestamp> created [<protocol_id>](protocols/<protocol_id>.json)`
-    - `<timestamp> updated [<old_protocol_id>](protocols/<old_protocol_id>.json) to [<new_protocol_id>](protocols/<new_protocol_id>.json)`
-    - `<timestamp> ran [<protocol_id>](protocols/<protocol_id>.json) — logs: [<log_id>](logs/<log_id>.log)`
-
-- **When to update**: After creating a protocol file, after updating/deriving a new protocol, and after every protocol run (append the run entry and the new log path).
-
-## References
-
-- **[database-query](references/database-query.md)** - Query database using SQL and puda cli
-- **[protocol-generator](references/protocol-generator.md)** - Generate, validate, and send puda protocols using the puda CLI
-- **[first-machine](references/first-machine.md)** - Generate commands for First machine liquid handling robots using the puda CLI
-- **[biologic-machine](references/biologic-machine.md)** - Generate commands for Biologic electrochemical testing devices using the puda CLI
-
-## Best Practices
-
-- **Read protocol-generator reference**: **MUST** read the [protocol-generator](references/protocol-generator.md) reference document before generating any protocols to ensure correct structure and format
-- **Always consult CLI help**: Run `puda [subcommand] --help` before executing commands to verify available flags and options
-- **Use machine-specific help**: Run `puda machine [machine-id] help` to discover available commands, labware, and parameters
-- **Validate before sending**: Use `puda nats protocol validate` to check protocol structure before transmission
-- **Parse output**: Extract information from command output to verify success and gather necessary data
-- **Update experiment tracking**: After creating/updating protocols or running them, append the action and any log path to `experiment.md` (and `protocol.json` if used) per the Experiment tracking section
+(or `./puda skills update` if using the local CLI)

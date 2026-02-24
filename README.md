@@ -4,7 +4,18 @@ A public repository of puda skills. This collection includes various skills and 
 
 ## Overview
 
-This repository contains skills documentation and references for the puda project. Each skill is organized in its own directory with relevant documentation and resources.
+This repository contains skills for the Puda project, following the [Agent Skills](https://agentskills.io) standard. Each skill lives in its own directory with a required `SKILL.md` (YAML frontmatter + markdown body) and optional `references/`, `scripts/`, or `assets/`.
+
+### Skill modules
+
+| Skill | Description |
+|-------|-------------|
+| **puda-setup** | Ensures the Puda CLI is installed and configured; use before any puda commands or when initializing a project. |
+| **puda-protocol-gen** | Machine discovery and JSON protocol creation. Use puda machine commands for capabilities; generate protocols; **must** call puda-memory after creating/updating a protocol file. |
+| **puda-memory** | Keeps **experiment.md** as the source of truth (logs, protocol links, history with timestamps). Use after creating/updating protocols or after runs. |
+| **puda-cli** | Using the puda CLI: machine operations, protocol validation/send, database queries, First and Biologic machine references. |
+| **puda-experiment** | Experiment folder layout, tracking, and workflow; references protocol generation and experiment memory. |
+| **karpathy-guidelines** | Coding and workflow guidelines. |
 
 ## Installing Skills
 

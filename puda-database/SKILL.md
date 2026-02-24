@@ -1,5 +1,5 @@
 ---
-name: database-query
+name: puda-database
 description: Query the puda database using SQL and the puda CLI. Use when users need to inspect schema or run SQL commands
 ---
 
