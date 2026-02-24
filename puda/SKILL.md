@@ -20,6 +20,14 @@ This collection provides skills for using the puda CLI tool to interact with lab
 
 3. **Verification**: Confirm installation success before proceeding with any puda CLI operations
 
+## Updating puda skills
+
+To refresh or update puda skills:
+
+```bash
+puda skills update
+```
+
 ## Using the puda CLI
 
 You have access to the puda CLI tool. Follow this systematic approach to use it successfully:
