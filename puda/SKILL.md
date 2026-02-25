@@ -7,7 +7,7 @@ description: Setup a Puda project, CLI installation, and project/experiment stru
 
 Before running any puda commands:
 
-1. **Check installation**: Determine how to invoke the CLI — use `puda` if installed globally, or `./puda` from the project root if only a local binary exists. If it's missing, direct the user to the [Puda releases page](https://github.com/PUDAP/puda/releases). Use that same invocation (`puda` or `./puda`) consistently in all steps below.
+1. **Check installation**: Determine how to invoke the CLI — use `puda` if installed globally, or from the project root use `./puda` on Unix/macOS or `.\puda.exe` on Windows if only a local binary exists. If it's missing, direct the user to the [Puda releases page](https://github.com/PUDAP/puda/releases). Use that same invocation (`puda`, `./puda`, or `.\puda.exe`) consistently in all steps below.
 2. **Ensure Python/pip and puda-drivers**: Ensure `python3` and `pip` are available; install them first if missing. Then install or upgrade the `puda-drivers` package: `pip install --upgrade puda-drivers`.
 3. **Login**: Log in to puda with `puda login`; you will need to enter a username.
 4. **New project**: For a new project, run `puda init` in the target directory (e.g. `puda init .` or `puda init <folder_name>`).
@@ -17,7 +17,7 @@ Only after the CLI is installed and the project is initialized, proceed with pro
 
 ## Project folder structure
 
-**Project root** contains `agents.md`, skills, `puda.config` and `puda.db` (created by `puda init` or `./puda init`).
+**Project root** contains `agents.md`, skills, `puda.config` and `puda.db` (created by `puda init`, `./puda init`, or `.\puda.exe init`).
 
 **Experiments** live as **folders** under the project root. Each experiment folder is named with the experiment’s **UUID** (generated in the “New puda experiment” flow).
 
@@ -52,4 +52,4 @@ To refresh or update puda skills:
 ```bash
 puda skills update
 ```
-(or `./puda skills update` if using the local CLI)
+(or `./puda skills update` / `.\puda.exe skills update` if using the local CLI)
