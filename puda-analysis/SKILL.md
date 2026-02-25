@@ -1,19 +1,13 @@
 ---
 name: puda-analysis
-description: Analyze puda SQLite data with Python using pandas and matplotlib. Use when users want to explore puda database data, run data analysis, create plots or charts, or work with puda data in Python.
+description: Data analysis using puda with Python. Use when users want to explore puda database data, run data analysis, create data visualizations, or work with puda data in Python.
 ---
 
 # Puda Data Analysis
 
-Analyze the puda SQLite database in Python: understand the schema, load data into pandas, and perform analysis and plotting.
+## Goal
 
-## When to Use
-
-Load this skill when the user wants to:
-- Analyze puda database data in Python
-- Create plots, charts, or visualizations from puda data
-- Explore or summarize data with pandas
-- Run custom data analysis on puda SQLite tables
+Perform data analysis on the puda SQLite database in Python inside the **analysis/** directory: understand the schema, load data into pandas, and perform analysis and plotting.
 
 ## Workflow
 
@@ -39,34 +33,44 @@ Use the output to identify:
 pip install pandas matplotlib
 ```
 
-Use a project venv or the user’s preferred environment when relevant.
+### 3. Create analysis folder
 
-### 3. Load data into pandas
+Create an **analysis/** folder inside the experiment folder if missing. Keep all analysis work there: Python scripts, Jupyter notebooks, exported data (e.g. CSV), and generated plots.
 
-DB path: project root, `puda.db`. In Python use direct SQLite (no CLI):
-After fetching the specified row
-**When getting data from biologic machine command**: data is in the `payload` column at `payload["response"]["data"]`.
+### 3. Generate python file
+
+1. Use the schema from step 1 to write valid SQL queries. Prefer a single clear SQL query that selects only the columns and data needed.
+2. **biologic**: data is in the `payload` column at `payload["response"]["data"]`; parse JSON and use that path for analysis.
 
 ```python
+import json
 import sqlite3
+from pathlib import Path
 import pandas as pd
 
-conn = sqlite3.connect("puda.db")  # project root
-df = pd.read_sql_query("SELECT payload FROM command_log WHERE run_id='<run_id>' AND command_name='CV'", conn)
-conn.close()
-```
+# Resolve puda.db from project root (2 levels up from this script)
+_db_path = Path(__file__).resolve().parent.parent.parent / "puda.db"
 
-Use the schema from step 1 to write valid SQL queries. Prefer a single clear SQL query that selects only the columns needed.
+with sqlite3.connect(_db_path) as conn:
+    row = pd.read_sql_query(
+        "SELECT payload FROM command_log WHERE run_id='f379e2a4-09f1-42dd-bedf-4016e799e317' AND command_name='CV'",
+        conn,
+    ).iloc[0]
+
+# json data
+data = json.loads(row["payload"])["response"]["data"]
+```
 
 ### 4. Analysis and plotting
 
+Continue the script from the loaded data (SQL result or parsed payload): apply pandas for analysis and matplotlib for plotting as requested.
+
 - **Analysis**: Use pandas for filtering, grouping, aggregations, time series, etc., according to what the user asked for.
-- **Plotting**: Use matplotlib (and optionally seaborn if the user wants it). Choose chart types that match the question (e.g. time series → line plot, distributions → histograms, categories → bar charts).
-- **Biologic / command data**: If measurement data comes from biologic machine commands, it is in the `payload` column at `payload["response"]["data"]`. Parse the column’s JSON and extract that path before building the DataFrame.
+- **Plotting**: Use matplotlib. Choose chart types that match the question (e.g. time series → line plot, distributions → histograms, categories → bar charts).
 
 ## Instructions summary
 
 1. Run **`puda db schema`** and use it to choose tables and columns.
 2. Install **pandas** and **matplotlib** if needed (`pip install pandas matplotlib`); **sqlite3** is built-in.
-3. Load data into a pandas DataFrame with `sqlite3` + `pd.read_sql_query`; DB is `puda.db` in project root (no CLI).
+3. Load data into a pandas DataFrame with `sqlite3` + `pd.read_sql_query`; DB is `puda.db` in project root.
 4. Perform the analysis and create the plots the user requested, using the schema to avoid invalid names and types. 
