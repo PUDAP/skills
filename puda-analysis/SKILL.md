@@ -1,19 +1,13 @@
 ---
 name: puda-analysis
-description: Data analysis using puda with Python. Use when users want to explore puda database data, run data analysis, create plots or charts, or work with puda data in Python.
+description: Data analysis using puda with Python. Use when users want to explore puda database data, run data analysis, create data visualizations, or work with puda data in Python.
 ---
 
 # Puda Data Analysis
 
-Analyze the puda SQLite database in Python: understand the schema, load data into pandas, and perform analysis and plotting.
+## Goal
 
-## When to Use
-
-Load this skill when the user wants to:
-- Analyze puda database data in Python
-- Create plots, charts, or visualizations from puda data
-- Explore or summarize data with pandas
-- Run custom data analysis on puda SQLite tables
+Perform data analysis on the puda SQLite database in Python inside the **analysis/** directory: understand the schema, load data into pandas, and perform analysis and plotting.
 
 ## Workflow
 
@@ -39,14 +33,19 @@ Use the output to identify:
 pip install pandas matplotlib
 ```
 
-### 3. Query and load data into pandas
+### 3. Create analysis folder
 
-DB path: project root, `puda.db`. In Python use direct SQLite (no CLI):
+Create an **analysis/** folder inside the experiment folder if missing. Keep all analysis work there: Python scripts, Jupyter notebooks, exported data (e.g. CSV), and generated plots. Use paths relative to the project root (e.g. `../../puda.db`) when opening the database from inside **analysis/**.
+
+### 3. Generate python file
+
+DB path: `puda.db` in project root
 After fetching the specified row in command_log table
 **biologic**: data is in the `payload` column at `payload["response"]["data"]`.
 Turn it into a pandas dataframe
 
 ```python
+# Query and load data into pandas
 import sqlite3
 import pandas as pd
 
