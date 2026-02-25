@@ -9,7 +9,6 @@ description: Setup puda project, CLI installation, and project/experiment struct
 2. **Ensure Python/pip and puda-drivers**: Ensure `python3` and `pip` are available; install them first if missing. Then install or upgrade the `puda-drivers` package: `pip install --upgrade puda-drivers`.
 3. **Login**: Log in to puda with `puda login`; you will need to enter a username.
 4. **New project**: run `puda init` (e.g. `puda init .` or `puda init <folder_name>`).
-5. **Install skills**: Install skills using `puda skills install`.
 
 Only after the CLI is installed and the project is initialized, proceed with protocol generation, machine commands, or experiment workflows.
 
