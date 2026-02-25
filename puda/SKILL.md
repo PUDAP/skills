@@ -9,7 +9,7 @@ Before running any puda commands:
 
 1. **Check installation**: Determine how to invoke the CLI — use `puda` if installed globally, or `./puda` from the project root if only a local binary exists. If it's missing, direct the user to the [Puda releases page](https://github.com/PUDAP/puda/releases). Use that same invocation (`puda` or `./puda`) consistently in all steps below.
 2. **Ensure Python/pip and puda-drivers**: Ensure `python3` and `pip` are available; install them first if missing. Then install or upgrade the `puda-drivers` package: `pip install --upgrade puda-drivers`.
-3. **Login**: Log in to puda with `puda auth login`; you will need to enter a username.
+3. **Login**: Log in to puda with `puda login`; you will need to enter a username.
 4. **New project**: For a new project, run `puda init` in the target directory (e.g. `puda init .` or `puda init <folder_name>`).
 5. **Install skills**: Install skills using `puda skills install`.
 
