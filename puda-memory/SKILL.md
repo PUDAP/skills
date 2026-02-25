@@ -23,7 +23,7 @@ Each experiment folder has **experiment.md** as the single place to record every
 
 - **Logs**: Use explicit markdown links to log files under `logs/`, e.g. `[<run_id>](logs/<run_id>.log)`. Add a new log link each time a protocol is run.
 - **Protocols**: Use explicit markdown links to protocol files under `protocols/`. In the "Protocols" section, list each as `[<protocol_id>](protocols/<protocol_id>.json)` with an optional short description after the link (e.g. `[<protocol_id>](protocols/<protocol_id>.json) — changed dispense amount to 100ul in step 10`).
-- **History**: A chronological log of actions with ISO 8601 timestamps. **MUST** use the actual current time for each entry—never guess or use a placeholder. Before writing a history line, run `date -u +%Y-%m-%dT%H:%M:%SZ` to get the real timestamp and use that value. Use explicit markdown links for all file paths. Append one line per action in this form:
+- **History**: A chronological log of actions with ISO 8601 timestamps. **MUST** use a real timestamp—never guess or use a placeholder. Get the timestamp from the relevant file: for "ran" entries use the first line of the log file; for "created"/"updated" entries use the `timestamp` key in the protocol JSON file. Use explicit markdown links for all file paths. Append one line per action in this form:
   - `<timestamp> created [<protocol_id>](protocols/<protocol_id>.json)`
   - `<timestamp> updated [<old_protocol_id>](protocols/<old_protocol_id>.json) to [<new_protocol_id>](protocols/<new_protocol_id>.json)`
   - `<timestamp> ran [<protocol_id>](protocols/<protocol_id>.json) — logs: [<log_id>](logs/<log_id>.log)`
