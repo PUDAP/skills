@@ -35,28 +35,35 @@ pip install pandas matplotlib
 
 ### 3. Create analysis folder
 
-Create an **analysis/** folder inside the experiment folder if missing. Keep all analysis work there: Python scripts, Jupyter notebooks, exported data (e.g. CSV), and generated plots. Use paths relative to the project root (e.g. `../../puda.db`) when opening the database from inside **analysis/**.
+Create an **analysis/** folder inside the experiment folder if missing. Keep all analysis work there: Python scripts, Jupyter notebooks, exported data (e.g. CSV), and generated plots.
 
 ### 3. Generate python file
 
-DB path: `puda.db` in project root
-After fetching the specified row in command_log table
-**biologic**: data is in the `payload` column at `payload["response"]["data"]`.
-Turn it into a pandas dataframe
+1. Use the schema from step 1 to write valid SQL queries. Prefer a single clear SQL query that selects only the columns and data needed.
+2. **biologic**: data is in the `payload` column at `payload["response"]["data"]`; parse JSON and use that path for analysis.
 
 ```python
-# Query and load data into pandas
+import json
 import sqlite3
+from pathlib import Path
 import pandas as pd
 
-conn = sqlite3.connect("puda.db")  # project root
-df = pd.read_sql_query("SELECT payload FROM command_log WHERE run_id='<run_id>' AND command_name='CV'", conn)
-conn.close()
+# Resolve puda.db from project root (2 levels up from this script)
+_db_path = Path(__file__).resolve().parent.parent.parent / "puda.db"
+
+with sqlite3.connect(_db_path) as conn:
+    row = pd.read_sql_query(
+        "SELECT payload FROM command_log WHERE run_id='f379e2a4-09f1-42dd-bedf-4016e799e317' AND command_name='CV'",
+        conn,
+    ).iloc[0]
+
+# json data
+data = json.loads(row["payload"])["response"]["data"]
 ```
 
-Use the schema from step 1 to write valid SQL queries. Prefer a single clear SQL query that selects only the columns needed.
-
 ### 4. Analysis and plotting
+
+Continue the script from the loaded data (SQL result or parsed payload): apply pandas for analysis and matplotlib for plotting as requested.
 
 - **Analysis**: Use pandas for filtering, grouping, aggregations, time series, etc., according to what the user asked for.
 - **Plotting**: Use matplotlib. Choose chart types that match the question (e.g. time series → line plot, distributions → histograms, categories → bar charts).
