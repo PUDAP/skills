@@ -22,7 +22,7 @@ Load this skill when:
 ## Required Resources
 
 Before generating commands, consult the puda CLI:
-- **Machine Help**: Use `puda machine biologic help commands` to see available commands, parameters, and options
+- **Machine Help**: Use `puda machine biologic commands` to see available commands, parameters, and options
 
 ## Command Structure
 
@@ -68,7 +68,7 @@ Each test method has specific parameter requirements in `params`. Consult the pu
 
 ## Instructions
 
-1. **Consult CLI**: Run `puda machine biologic help` to review available test methods and their parameters
+1. **Consult CLI**: Run `puda machine biologic commands` to review available commands and their parameters
 
 2. **Identify test type**: Choose the appropriate test method based on requirements (OCV, CA, PEIS, GEIS, CV, MPP variants)
 

@@ -11,8 +11,8 @@ Machine discovery and protocol creation: discover machine capabilities via the p
 
 ## Logic
 
-1. **Machine discovery**: Use puda machine commands to see capabilities (e.g. `puda machine first help`, `puda machine first help commands`, `puda machine first help labware`, `puda machine biologic help commands`). Use this to determine valid command names, parameters, and labware.
-2. **Protocol generation**: User info, protocol ID/datetime, machine references, JSON structure (below), validation with `puda nats protocol validate -f <file>`.
+1. **Machine discovery**: Use puda machine commands to see capabilities (e.g. `puda machine first commands`). Use this to determine valid command names, parameters, and labware.
+2. **Protocol generation**: User info, protocol ID/datetime, machine references, JSON structure (below), validation with `puda protocol validate -f <file>`.
 3. Save protocol files under the experiment’s **protocols/** directory; filename = `protocol_id.json`.
 
 ## Constraint
@@ -52,7 +52,7 @@ Each command:
 2. **Protocol ID and timestamp**: Generate UUID and ISO datetime (e.g. via Python `uuid.uuid4()` and `datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")`).
 3. **Machine references**: Read the machine docs or CLI help for valid commands and params.
 4. **Generate**: Create a new JSON file under the experiment’s **protocols/** directory. Filename = `protocol_id.json`. When modifying a protocol, **always create a new file and new protocol_id** — do not overwrite.
-5. **Validate**: Run `puda nats protocol validate -f <file_name>` before sending.
+5. **Validate**: Run `puda protocol validate -f <file_name>` before sending using `puda protocol send -f <file_name>`.
 6. **Update experiment**: **Must** invoke the **puda-memory** skill right after creating/updating the file so experiment.md is updated.
 
 ## Output Format (JSON)
@@ -70,6 +70,10 @@ Each command:
 ```
 
 Each command: `step_number`, `name`, `machine_id`, `params`, `kwargs` (optional).
+
+## Troubleshooting
+
+- **RUN_ID_MISMATCH** when sending a protocol file: run `puda machine <machine_id> reset` to reset the machine, then send the protocol again.
 
 ## Best Practices
 

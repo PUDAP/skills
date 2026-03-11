@@ -23,9 +23,8 @@ Load this skill when:
 
 **IMPORTANT**: Before generating any commands, **always consult these resources**:
 
-1. **Consult CLI**: Run `puda machine first help` to review available commands and parameters
-2. **Labware Help**: Use `puda machine first help labware` to see available labware and wells
-3. **Commands Help**: Use `puda machine first help commands` to see available commands and parameters
+1. **Consult CLI**: Run `puda machine first commands` to review available commands and parameters
+2. **Labware Help**: Run `python3 -c "from puda_drivers.labware import get_available_labware; print(get_available_labware())"` to see available labware and wells for the first machine
 
 **Do not generate commands without first consulting these resources** to ensure accuracy and compatibility.
 
@@ -58,7 +57,7 @@ The following rules **must** be strictly followed when generating First machine 
 
 **Critical sequencing rules:**
 1. **`home`**: Must always be the **very first** First machine command in any protocol, before any other operations
-2. **`load_deck`**: Must always be executed after `home` and before any other First machine commands. Use `puda machine first help labware` to discover available labware types and the required parameters
+2. **`load_deck`**: Must always be executed after `home` and before any other First machine commands. Run `python3 -c "from puda_drivers.labware import get_available_labware; print(get_available_labware())"` to discover available labware types and the required parameters
 3. **`attach_tip`**: May only occur before `drop_tip`; must be called before any `aspirate_from` or `dispense_to` that use the tip
 4. **`drop_tip`**: May only occur after `attach_tip`; workflows must always end without a tip attached
 
