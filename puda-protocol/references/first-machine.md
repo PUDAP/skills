@@ -24,7 +24,7 @@ Load this skill when:
 **IMPORTANT**: Before generating any commands, **always consult these resources**:
 
 1. **Consult CLI**: Run `puda machine commands first` to review available commands and parameters
-2. **Labware Help**: Run `python3 -c "from puda_drivers.labware import get_available_labware; print(get_available_labware())"` to see available labware and wells for the first machine
+2. **Labware Help**: See `labware.md` for available labware and well details for the first machine
 
 **Do not generate commands without first consulting these resources** to ensure accuracy and compatibility.
 
