@@ -39,32 +39,10 @@ Each Biologic machine command follows the standard protocol command structure (s
   - `MPP_Cycles` - Maximum Power Point with cycles
   - `MPP_Tracking` - Maximum Power Point tracking
 - `params`: Test-specific parameters (consult CLI help for each test type)
-- `kwargs`: See below for required and optional kwargs
 
 ## Required Parameters
 
-### Common to All Commands
-- **`channels`**: Must always be `[0]` in kwargs (required for all Biologic commands)
-
-### Test-Specific Parameters
-Each test method has specific parameter requirements in `params`. Consult the puda CLI (`puda machine commands biologic`) for detailed parameter specifications for each test type.
-
-## Optional Keyword Arguments (kwargs)
-
-### Standard Test Programs (OCV, CA, PEIS, GEIS, CV)
-- `channels`: `[0]` (required)
-- `retrieve_data`: Boolean (optional) - whether to retrieve measurement data
-
-### MPP and MPP_Cycles
-- `channels`: `[0]` (required)
-- `data`: Optional data parameter
-- `by_channel`: Optional channel-specific processing
-- `cv`: Optional CV-related parameter
-
-### MPP_Tracking
-- `channels`: `[0]` (required)
-- `folder`: Optional folder path for data storage
-- `by_channel`: Optional channel-specific processing
+- **`channels`**: Must always be `[0]` (required for all Biologic commands)
 
 ## Instructions
 
@@ -72,13 +50,13 @@ Each test method has specific parameter requirements in `params`. Consult the pu
 
 2. **Identify test type**: Choose the appropriate test method based on requirements (OCV, CA, PEIS, GEIS, CV, MPP variants)
 
-3. **Generate command**: Create a command object with `machine_id: "biologic"`, appropriate `name`, `params`, and `kwargs` with `channels: [0]` (required)
+3. **Generate command**: Create a command object with `machine_id: "biologic"`, appropriate `name` and `params`
 
-4. **Validate**: Ensure `channels: [0]` is in kwargs and all required parameters are present
+4. **Validate**: Ensure `channels: [0]` is in params and all required parameters are present
 
 ## Best Practices
 
-- **Required channels**: Always set `channels: [0]` in kwargs - this is required for all Biologic commands
+- **Required channels**: Always set `channels: [0]` in params
 - **Machine ID**: Always set `machine_id` to `"biologic"` (string)
 - **Test selection**: Choose the appropriate test method based on measurement requirements
 - **Parameter completeness**: Include all required parameters for each test type in `params`
