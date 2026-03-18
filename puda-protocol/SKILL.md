@@ -1,19 +1,7 @@
 ---
 name: puda-protocol
-description: Protocol creation for PUDA. Use when generating or modifying protocols for experiments and discovering machine capabilities
+description: Protocol creation for PUDA. Use when doing anything related to PUDA protocols
 ---
-
-# Puda Protocol Generation
-
-## Goal
-
-Machine discovery and protocol creation: discover machine capabilities via the puda CLI and generate valid JSON protocols for the experiment’s **protocols/** directory.
-
-## Logic
-
-1. **Machine discovery**: Use puda machine commands to see capabilities (e.g. `puda machine commands first`). Use this to determine valid command names, parameters, and labware.
-2. **Protocol generation**: User info, protocol ID/datetime, machine references, JSON structure (below), validation with `puda protocol validate -f <file>`.
-3. Save protocol files under the experiment’s **protocols/** directory; filename = `protocol_id.json`.
 
 ## Constraint
 
@@ -36,21 +24,20 @@ Top-level fields:
 Each command:
 - `step_number`: Sequential integer from 1 (across all commands)
 - `name`: Valid command name for the specified machine
-- `machine_id`: Target machine (e.g. `"first"`, `"biologic"`)
+- `machine_id`: Target machine id
 - `params`: Required and optional parameters for the command
-- `kwargs`: Optional (channels, retrieve_data, data, by_channel, cv, folder, etc.)
 
 ## Command Generation
 
-**CRITICAL**: Before generating commands, read the relevant machine reference:
-- First machine: [first-machine](references/first-machine.md)
-- Biologic machine: [biologic-machine](references/biologic-machine.md)
+**CRITICAL**: Before generating commands, invoke the **puda-machines** skill to read the relevant machine reference and commands
+
+**CRITICAL**: If you are unsure of which machine to use for a certain task, ask the user before proceeding
 
 ## Instructions
 
 1. **User info**: Run `puda config list` for user_id and username.
 2. **Protocol ID and timestamp**: Generate UUID and ISO datetime (e.g. via Python `uuid.uuid4()` and `datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")`).
-3. **Machine references**: Read the machine docs or CLI help for valid commands and params.
+3. **Machine references**: Use `puda-machines` skill to understand the machines and available commands
 4. **Generate**: Create a new JSON file under the experiment’s **protocols/** directory. Filename = `protocol_id.json`. When modifying a protocol, **always create a new file and new protocol_id** — do not overwrite.
 5. **Validate**: Run `puda protocol validate -f <file_name>` before running using `puda protocol run -f <file_name>`.
 6. **Update experiment**: **Must** invoke the **puda-memory** skill right after creating/updating the file so experiment.md is updated.
@@ -69,7 +56,7 @@ Each command:
 }
 ```
 
-Each command: `step_number`, `name`, `machine_id`, `params`, `kwargs` (optional).
+Each command: `step_number`, `name`, `machine_id`, `params`
 
 ## Troubleshooting
 
