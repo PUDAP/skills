@@ -3,6 +3,13 @@ name: labware
 description: Available labware definitions, usage, and valid row/column coordinates.
 ---
 
+# Critical Rule
+
+If you are unsure which labware or well should be used when generating commands, **ask the user** before proceeding.  
+Do **not** assume.
+
+If there is only one well, `well_name` can be assumed to be `A1`
+
 # Labware Reference
 
 This reference defines each available labware, what it is used for, and its valid row/column coordinates.
@@ -12,14 +19,14 @@ This reference defines each available labware, what it is used for, and its vali
 - **Purpose:** Single-position plate location used for the MEA cell target.
 - **Rows:** `A` (1 row)
 - **Columns:** `1` (1 column)
-- **Addressable wells:** `A1`
+- **Total wells:** 1
 
 ## `opentrons_96_tiprack_300ul`
 
 - **Purpose:** 300 uL pipette tip rack for standard liquid handling steps.
 - **Rows:** `A-H` (8 rows)
 - **Columns:** `1-12` (12 columns)
-- **Total positions:** 96
+- **Total well:** 96
 
 ## `polyelectric_8_wellplate_30000ul`
 
@@ -33,11 +40,11 @@ This reference defines each available labware, what it is used for, and its vali
 - **Purpose:** 1000 uL pipette tip rack for high-volume transfers.
 - **Rows:** `A-H` (8 rows)
 - **Columns:** `1-12` (12 columns)
-- **Total positions:** 96
+- **Total wells:** 96
 
 ## `trash_bin`
 
 - **Purpose:** Single-position waste location for tip discard.
 - **Rows:** `A` (1 row)
 - **Columns:** `1` (1 column)
-- **Addressable position:** `A1`
+- **Total wells:** `A1`
