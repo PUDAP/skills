@@ -1,6 +1,6 @@
 ---
 name: puda-machines
-description: Discover PUDA machine capabilities and choose the right machines for protocol generation. Use when you need to know more about a machine, how to use a machine, or which machine should run a task.
+description: Discover PUDA machine capabilities and choose the right machines for protocol generation. Use when you need to know more about a machine or how to use a machine.
 ---
 
 # PUDA Machines
