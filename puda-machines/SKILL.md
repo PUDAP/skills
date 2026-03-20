@@ -14,11 +14,6 @@ Provide machine-selection and capability guidance for PUDA workflows, then load 
 If you are unsure which machine should be used for a command, **ask the user** before proceeding.  
 Do **not** assume.
 
-## Machine References
-
-- First machine: [first-machine](references/first-machine.md)
-- Biologic machine: [biologic-machine](references/biologic-machine.md)
-
 ## Machine Capabilities and When to Use
 
 ### First Machine (`machine_id: "first"`)
@@ -35,6 +30,7 @@ Use this machine when:
 - The user mentions tip usage, aspiration/dispensing, or deck slots/labware setup
 
 Before command generation:
+- Refer to: [first-machine](references/first-machine.md)
 - Run `puda machine commands first` to understand available commands
 - Follow constraints and sequencing in `references/first-machine.md`
 
@@ -54,8 +50,28 @@ Use this machine when:
 - The user asks for OCV, CA, EIS, CV, or MPP tests
 
 Before command generation:
+- Refer to: [biologic-machine](references/biologic-machine.md)
 - Run `puda machine commands biologic` to understand available commands
 - Follow constraints in `references/biologic-machine.md`
+
+### Centrifuge Machine (`machine_id: "centrifuge"`)
+
+Use for **centrifugation, spin-downs, and phase or pellet separation**.
+
+Capabilities:
+- Sample spin-downs before or after handling steps
+- Separation workflows based on centrifugal force
+- Pelleting, clarification, and phase-separation preparation steps
+
+Use this machine when:
+- The user asks to centrifuge, spin, spin down, pellet, or clarify samples
+
+Before command generation:
+- Refer to: [centrifuge-machine](references/centrifuge-machine.md)
+- Run `puda machine commands centrifuge` to understand available commands
+- Follow constraints in `references/centrifuge-machine.md`
+
+
 
 ## Selection Workflow
 
