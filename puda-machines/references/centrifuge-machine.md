@@ -38,6 +38,7 @@ Each centrifuge machine command follows the standard protocol command structure 
 Before generating a centrifuge command, confirm the run conditions the user cares about, such as:
 
 - Duration
+- Device
 
 If required information is missing, do not assume it. Ask the user, or use an explicit placeholder only when the surrounding workflow requires drafting an incomplete command for review.
 
@@ -47,6 +48,7 @@ Apply these rules when preparing centrifuge commands:
 
 - Always run the `home` command before any operations
 - Always run `close_lid` before `spin` command for the device
+- Always ask which device if user did not specify, do not assume
 
 ## Instructions
 
