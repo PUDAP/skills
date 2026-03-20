@@ -34,6 +34,24 @@ Before command generation:
 - Run `puda machine commands first` to understand available commands
 - Follow constraints and sequencing in `references/first-machine.md`
 
+### PipQuBotV3 Machine (`machine_id: "pipqubotv3"`)
+
+Use for **liquid handling and deck operations**.
+
+Capabilities:
+- Pipetting workflows: aspirate, dispense, attach tip, drop tip
+- Deck and labware workflows: load deck, position-dependent operations
+- Sequenced robotic handling steps in wet-lab protocols
+
+Use this machine when:
+- The task is about moving liquids between wells/labware
+- The user mentions tip usage, aspiration/dispensing, or deck slots/labware setup
+
+Before command generation:
+- Refer to: [pipqubotv3-machine](references/pipqubotv3-machine.md)
+- Run `puda machine commands pipqubotv3` to understand available commands
+- Follow constraints and sequencing in `references/pipqubotv3-machine.md`
+
 ### Biologic Machine (`machine_id: "biologic"`)
 
 Use for **electrochemical testing and characterization**.
