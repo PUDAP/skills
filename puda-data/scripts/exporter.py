@@ -16,9 +16,7 @@ from extractor import (
     get_protocol
 )
 from hasher import generate_fingerprint
-
-# Default paths
-DEFAULT_EXPORT_DIR = Path("/home/bears/.openclaw/workspace/exports")
+from config import get_export_dir
 
 
 def export_to_csv(
@@ -37,7 +35,7 @@ def export_to_csv(
     Returns:
         Path to exported file
     """
-    output_dir = Path(output_dir) if output_dir else DEFAULT_EXPORT_DIR
+    output_dir = Path(output_dir) if output_dir else get_export_dir()
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Get data
@@ -74,7 +72,7 @@ def export_to_json(
     Returns:
         Path to exported file
     """
-    output_dir = Path(output_dir) if output_dir else DEFAULT_EXPORT_DIR
+    output_dir = Path(output_dir) if output_dir else get_export_dir()
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Get data and fingerprint
@@ -131,7 +129,7 @@ def export_protocol(
     Returns:
         Path to exported file
     """
-    output_dir = Path(output_dir) if output_dir else DEFAULT_EXPORT_DIR
+    output_dir = Path(output_dir) if output_dir else get_export_dir()
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Get run and protocol info
@@ -172,7 +170,7 @@ def export_full_experiment(
     Returns:
         Dictionary with paths to exported files
     """
-    output_dir = Path(output_dir) if output_dir else DEFAULT_EXPORT_DIR
+    output_dir = Path(output_dir) if output_dir else get_export_dir()
     output_dir.mkdir(parents=True, exist_ok=True)
     
     results = {}

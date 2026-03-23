@@ -11,6 +11,7 @@ from typing import Optional
 
 from extractor import extract_measurement_data, get_run_info
 from hasher import generate_fingerprint
+from config import get_report_dir
 
 
 def plot_cv(
@@ -61,8 +62,7 @@ def plot_cv(
     # Save
     if output_path is None:
         # Default path
-        reports_dir = Path("/home/bears/.openclaw/workspace/reports")
-        reports_dir.mkdir(parents=True, exist_ok=True)
+        reports_dir = get_report_dir()
         plots_dir = reports_dir / "plots"
         plots_dir.mkdir(exist_ok=True)
         output_path = plots_dir / f"cv_{run_id[:8]}.png"
@@ -106,9 +106,9 @@ def plot_cv_simple(
     plt.tight_layout()
     
     if output_path is None:
-        reports_dir = Path("/home/bears/.openclaw/workspace/reports")
+        reports_dir = get_report_dir()
         plots_dir = reports_dir / "plots"
-        plots_dir.mkdir(parents=True, exist_ok=True)
+        plots_dir.mkdir(exist_ok=True)
         output_path = plots_dir / f"cv_{run_id[:8]}.png"
     
     plt.savefig(output_path, dpi=150)
@@ -152,9 +152,9 @@ def plot_histogram(
     plt.tight_layout()
     
     if output_path is None:
-        reports_dir = Path("/home/bears/.openclaw/workspace/reports")
+        reports_dir = get_report_dir()
         plots_dir = reports_dir / "plots"
-        plots_dir.mkdir(parents=True, exist_ok=True)
+        plots_dir.mkdir(exist_ok=True)
         output_path = plots_dir / f"hist_{column}_{run_id[:8]}.png"
     
     plt.savefig(output_path, dpi=150)

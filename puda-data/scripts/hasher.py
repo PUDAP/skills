@@ -10,7 +10,7 @@ import json
 import pandas as pd
 from typing import Dict, Any, Optional
 
-# Import extractor for data access
+# Import extractor for data access (uses config internally)
 from extractor import (
     extract_measurement_data,
     get_run_info,
@@ -18,6 +18,7 @@ from extractor import (
     get_runs_by_type,
     _get_connection
 )
+from registry import SchemaRegistry
 
 
 def hash_measurement(df: pd.DataFrame) -> str:
@@ -137,12 +138,19 @@ def generate_fingerprint(run_id: str, command_name: str = "CV") -> Dict[str, Any
     
     # Add data-specific info if available
     if not df.empty:
-        first_col = df.columns[0]  # potential for CV
-        second_col = df.columns[1]  # current for CV
-        
-        fingerprint[f"{first_col}_range"] = [float(df[first_col].min()), float(df[first_col].max())]
-        fingerprint[f"{second_col}_range"] = [float(df[second_col].min()), float(df[second_col].max())]
-    
+        # Use schema to determine range column names
+        device = run_info.get("commands", [{}])[0].get("device", "first") if run_info.get("commands") else "first"
+        schema = SchemaRegistry.get_or_default(device, command_name)
+
+        # Map schema columns to actual DataFrame columns
+        x_col = schema.primary_x if schema.primary_x in df.columns else df.columns[0]
+        y_col = schema.primary_y if schema.primary_y in df.columns else (df.columns[1] if len(df.columns) > 1 else df.columns[0])
+
+        fingerprint["x_range"] = [float(df[x_col].min()), float(df[x_col].max())]
+        fingerprint["y_range"] = [float(df[y_col].min()), float(df[y_col].max())]
+        fingerprint["x_column"] = x_col
+        fingerprint["y_column"] = y_col
+
     return fingerprint
 
 

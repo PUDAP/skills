@@ -1,11 +1,11 @@
 ---
 name: puda-data
-description: Extract, hash, export, and report on PUDA experimental data. Provides data provenance through SHA-256 hashing. Supports CV, OCV, CA, PEIS, GEIS measurements.
+description: Extract, hash, export, and report on PUDA experimental data. Provides data provenance through SHA-256 hashing. Supports multiple devices (first, biologic) and measurement types (CV, OCV, CA, PEIS, GEIS).
 ---
 
 # PUDA Data Skills
 
-Comprehensive data management for PUDA laboratory experiments. All 4 phases complete!
+Comprehensive data management for PUDA laboratory experiments with pluggable architecture.
 
 ## Quick Start
 
@@ -13,176 +13,298 @@ Comprehensive data management for PUDA laboratory experiments. All 4 phases comp
 import sys
 sys.path.append("/home/bears/.openclaw/workspace/.claude/skills/puda-data/scripts")
 
-# Phase 1: Extract
+# Extract data
 from extractor import get_runs_by_type, extract_measurement_data
+from adapters import AdapterRegistry, register_all
 
-# Phase 2: Hash  
-from hasher import hash_measurement, generate_fingerprint
+# Register adapters (auto-registers first, biologic)
+register_all()
 
-# Phase 3: Export
-from exporter import export_to_csv, export_to_json
-
-# Phase 4: Report
-from report import generate_report
-from visualizer import plot_cv
-
-# Full workflow
+# Get data
 run_id = get_runs_by_type("CV", 1)[0][0]
 df = extract_measurement_data(run_id, "CV")
+
+# Hash for provenance
+from hasher import generate_fingerprint
 fp = generate_fingerprint(run_id)
 print(f"Hash: {fp['measurement_hash']}")
-generate_report(run_id)
+
+# Plot
+from plotter import plot_measurement
+plot_path = plot_measurement(run_id, "CV")
+
+# Full report
+from report import generate_report
+report_path = generate_report(run_id)
 ```
 
-## Phase Summary
+## Architecture
 
-| Phase | Module | Purpose |
-|-------|--------|---------|
-| 1 | `extractor.py` | Query database for data |
-| 2 | `hasher.py` | SHA-256 hashing for provenance |
-| 3 | `exporter.py` | Export to CSV/JSON |
-| 4 | `report.py` + `visualizer.py` | Markdown reports with plots |
+```
+puda-data/
+├── config.py              # Path discovery (env, markers, cwd)
+├── registry.py            # SchemaRegistry (column definitions)
+├── extractor.py           # Data extraction from DB
+├── hasher.py              # SHA-256 provenance
+├── exporter.py             # CSV/JSON export
+├── plotter.py             # PlotterRegistry (pluggable plots)
+├── report.py              # Markdown report builder
+└── adapters/
+    ├── __init__.py         # DeviceAdapter ABC + registry
+    ├── first.py            # First machine / qubot adapter
+    └── biologic.py         # Biologic potentiostat adapter
+```
 
-## Phase 1: Data Extractor
+## Core Concepts
 
-See: `references/extractor.md`
+### 1. Path Discovery (config.py)
+
+Automatically finds project root via:
+1. `PUDA_PROJECT_ROOT` env var
+2. `puda.db` in parent directories
+3. `puda.config` in parent directories
+4. `experiment.md` in parent directories
+5. `protocols/` in parent directories
+6. `cwd()` fallback
+
+```python
+from config import get_project_root, get_db_path, get_report_dir
+
+print(get_project_root())  # /path/to/workspace
+print(get_db_path())       # /path/to/workspace/puda.db
+```
+
+### 2. Schema Registry (registry.py)
+
+Maps `(device, command)` → column names, units, plot axes.
+
+```python
+from registry import SchemaRegistry, Schema
+
+# Get schema
+schema = SchemaRegistry.get("first", "CV")
+print(schema.columns)  # ['potential', 'current', 'time', 'extra', 'flag']
+
+# Register new schema
+SchemaRegistry.register("mydevice", "CUSTOM", Schema(
+    columns=["freq", "magnitude", "phase"],
+    units={"freq": "Hz", "magnitude": "dB"},
+    primary_x="freq",
+    primary_y="magnitude"
+))
+
+# Get or create default
+schema = SchemaRegistry.get_or_default("unknown", "CV")
+```
+
+**Built-in schemas:**
+
+| Device | Command | Columns |
+|--------|---------|---------|
+| first | CV | potential, current, time, extra, flag |
+| first | OCV | potential, current, time, extra, flag |
+| first | CA | time, current, voltage, extra, flag |
+| first | PEIS | frequency, Z_real, Z_imag, phase, flag |
+| biologic | CV | E, I, time, Ewe, flag |
+| biologic | PEIS | frequency, Z_real, Z_imag, phase, magnitude |
+
+### 3. Device Adapters (adapters/)
+
+Abstract device-specific data extraction.
+
+```python
+from adapters import DeviceAdapter, AdapterRegistry, register_all
+
+register_all()  # Registers first, biologic adapters
+
+# Get adapter for device
+adapter = AdapterRegistry.get("biologic")
+
+# Auto-detect device from run
+adapter = AdapterRegistry.get_or_default("first")
+
+# Unknown device gets GenericAdapter fallback
+adapter = AdapterRegistry.get_or_default("unknown_device")
+```
+
+**Adding a new device:**
+```python
+from adapters import DeviceAdapter, AdapterRegistry
+
+class MyDeviceAdapter(DeviceAdapter):
+    @property
+    def name(self): return "mydevice"
+    
+    def extract_data(self, payload, command):
+        # Navigate device-specific payload structure
+        data = payload.get("response", {}).get("data", {})
+        return pd.DataFrame(data.get("0", []))
+
+AdapterRegistry.register(MyDeviceAdapter())
+```
+
+### 4. Plotter Registry (plotter.py)
+
+Pluggable visualization functions.
+
+```python
+from plotter import register_plotter, plot_measurement
+
+# Registered plotters: CV, OCV, PEIS, CA
+plot_path = plot_measurement(run_id, "CV")  # Auto-routes to correct plotter
+
+# Add custom plotter
+@register_plotter("MY_DATA")
+def plot_my_data(run_id, **kwargs):
+    df = extract_measurement_data(run_id, "MY_DATA")
+    plt.plot(df["x"], df["y"])
+    return save_plot(...)
+```
+
+## API Reference
+
+### Extractor
 
 ```python
 from extractor import (
-    extract_measurement_data,
-    get_runs_by_type,
-    get_latest_measurements,
-    get_run_info,
-    get_protocol,
-    list_all_runs
+    extract_measurement_data,  # Get DataFrame for a run
+    get_runs_by_type,          # List runs by command type
+    get_latest_measurements,   # Get recent measurement DataFrames
+    get_run_info,              # Get run metadata
+    get_protocol,              # Get protocol definition
+    list_all_runs,             # List all runs
 )
 
-# Get latest CV
-run_id, df = get_latest_measurements("CV", 1)[0]
-print(f"Points: {len(df)}")
+# Examples
+df = extract_measurement_data(run_id, "CV", device="biologic")
+runs = get_runs_by_type("CV", limit=10)
+measurements = get_latest_measurements("PEIS", limit=5)
+info = get_run_info(run_id)
+protocol = get_protocol(protocol_id)
+all_runs = list_all_runs(limit=20)
 ```
 
-## Phase 2: Data Hasher
-
-See: `references/hasher.md`, `references/provenance-demo.md`
+### Hasher
 
 ```python
 from hasher import (
-    hash_measurement,
-    hash_run,
-    generate_fingerprint,
-    verify_integrity,
-    demonstrate_integrity
+    hash_measurement,       # SHA-256 of DataFrame
+    hash_run,               # Aggregate hash of all commands
+    generate_fingerprint,   # Full fingerprint with metadata
+    verify_integrity,       # Check if data matches stored hash
+    compare_runs,           # Compare two runs
+    demonstrate_integrity,  # Show hash changes on modification
 )
 
-# Get fingerprint with all hashes
+# Examples
 fp = generate_fingerprint(run_id)
-print(f"Measurement Hash: {fp['measurement_hash']}")
-print(f"Run Hash: {fp['run_hash']}")
-print(f"Checksum: {fp['checksum']}")
+# Returns: {run_id, measurement_hash, run_hash, checksum, 
+#           data_points, x_range, y_range, ...}
 
-# Verify data hasn't been tampered
-is_valid = verify_integrity(run_id, stored_hash)
+is_valid = verify_integrity(run_id, expected_hash)
+comparison = compare_runs(run_id1, run_id2)
+demo = demonstrate_integrity(run_id)  # Shows avalanche effect
 ```
 
-### Provenance Demo
-
-**Original hash:** `sha256:7bd7b697...`
-
-**After 1% change:** `sha256:a03a6830...`
-
-**Completely different!** ✅
-
-See `references/provenance-demo.md` for full example.
-
-## Phase 3: Exporter
-
-See: `references/exporter.md`
+### Exporter
 
 ```python
 from exporter import (
-    export_to_csv,
-    export_to_json,
-    export_protocol,
-    export_full_experiment
+    export_to_csv,           # Export DataFrame to CSV
+    export_to_json,           # Export with metadata + hashes
+    export_protocol,          # Export protocol definition
+    export_full_experiment,   # Export everything at once
 )
 
-# Export everything
-export_full_experiment(run_id, "/path/to/exports/")
+# Examples
+csv_path = export_to_csv(run_id)
+json_path = export_to_json(run_id)
+prot_path = export_protocol(run_id)
+results = export_full_experiment(run_id)
 ```
 
-## Phase 4: Report Generator
-
-See: `references/report.md`
+### Report
 
 ```python
 from report import ExperimentReport, generate_report
-from visualizer import plot_cv
 
-# Simple one-liner
-generate_report(run_id)
+# One-liner
+report_path = generate_report(run_id, command_name="CV")
 
 # Custom report
 report = ExperimentReport(run_id, "CV", "My Experiment")
 report.add_metadata()
 report.add_hashes()
 report.add_summary()
-report.add_plot("CV Curve", plot_cv, {"run_id": run_id})
-report.add_markdown("## Notes\nCustom observations here.")
+report.add_plot("CV Curve", plot_measurement, {"run_id": run_id, "command": "CV"})
+report.add_table("Stats", {"key": "value"})
+report.add_markdown("## Notes\nCustom observations.")
 report.save("report.md")
 ```
 
-### Report Always Includes
+### Plotter
 
-- ✅ Run ID, Protocol ID, Command Type
-- ✅ Measurement Hash (SHA-256)
-- ✅ Run Hash 
-- ✅ Checksum
-- ✅ Data Summary (points, ranges)
+```python
+from plotter import (
+    plot_measurement,   # Main entry point (auto-routes to correct plotter)
+    plot_cv,            # CV forward/backward scatter
+    plot_ocv,           # OCV time series
+    plot_nyquist,       # PEIS Nyquist plot
+    plot_ca,            # CA current vs time
+    plot_default,       # Generic scatter of first 2 columns
+    get_data_summary,   # Summary statistics
+)
 
-### Customizable
+# Examples
+path = plot_measurement(run_id, "CV")
+path = plot_measurement(run_id, "PEIS")  # Routes to nyquist
+summary = get_data_summary(run_id)
+```
 
-- ✅ Add any plot function
-- ✅ Add data tables
-- ✅ Add markdown notes
+## Database Schema
 
-## Database
+```sql
+protocol(run_id, user_id, username, description, commands, created_at)
+run(run_id, protocol_id, created_at)
+sample(sample_id, run_id, data_payload, created_at)
+measurement(measurement_id, sample_id, data_payload, created_at)
+command_log(command_log_id, run_id, step_number, command_name, payload, machine_id, command_type, created_at)
+```
 
-**Path:** `/home/bears/.openclaw/workspace/puda.db`
+## Supported Data Types
 
-| Table | Rows |
-|-------|------|
-| protocol | 7 |
-| run | 14 |
-| command_log | 94 |
+| Type | Status | Plot Function |
+|------|--------|---------------|
+| CV | ✅ Full | `plot_cv` (forward/backward scatter) |
+| OCV | ✅ Full | `plot_ocv` (time series) |
+| CA | ✅ Full | `plot_ca` (current vs time) |
+| PEIS | ✅ Full | `plot_nyquist` (Z_real vs -Z_imag) |
+| GEIS | ✅ Ready | Generic fallback |
 
-### Supported Data Types
+## Environment Variables
 
-| Type | Status |
-|------|--------|
-| CV | ✅ Has data |
-| OCV | Ready (no data yet) |
-| CA | Ready (no data yet) |
-| PEIS | Ready (no data yet) |
-| GEIS | Ready (no data yet) |
+| Variable | Purpose | Example |
+|----------|---------|---------|
+| `PUDA_PROJECT_ROOT` | Override project root discovery | `/home/user/puda-project` |
 
 ## Files
 
 ```
 puda-data/
-├── SKILL.md
+├── SKILL.md              # This file
 ├── scripts/
-│   ├── extractor.py      # Phase 1: Data extraction
-│   ├── hasher.py         # Phase 2: Hashing & provenance
-│   ├── exporter.py       # Phase 3: Export to CSV/JSON
-│   ├── visualizer.py     # Phase 4: Plotting functions
-│   └── report.py         # Phase 4: Report builder
-└── references/
-    ├── extractor.md
-    ├── hasher.md
-    ├── exporter.md
-    ├── report.md
-    └── provenance-demo.md    # Hash difference demo
+│   ├── config.py         # Path discovery
+│   ├── registry.py       # SchemaRegistry
+│   ├── extractor.py      # Database queries
+│   ├── hasher.py         # SHA-256 hashing
+│   ├── exporter.py       # CSV/JSON export
+│   ├── plotter.py        # PlotterRegistry
+│   ├── report.py         # Report builder
+│   └── adapters/
+│       ├── __init__.py   # DeviceAdapter ABC
+│       ├── first.py      # First machine adapter
+│       └── biologic.py   # Biologic adapter
+└── references/           # Detailed docs (future)
 ```
 
 ## Requirements
@@ -190,3 +312,8 @@ puda-data/
 ```bash
 pip install pandas matplotlib numpy
 ```
+
+---
+
+**Refactor History:**
+- 2026-03-21: Added pluggable adapter architecture (config, registry, adapters)

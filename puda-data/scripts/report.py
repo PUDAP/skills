@@ -4,18 +4,17 @@ puda-data Phase 4: Report Generator
 Generate markdown reports with pluggable visualizations.
 """
 
-import os
 from pathlib import Path
 from datetime import datetime
 from typing import List, Tuple, Callable, Any, Optional, Dict
 
 from extractor import extract_measurement_data, get_run_info, get_protocol
 from hasher import generate_fingerprint
-from visualizer import plot_cv, get_data_summary
+from plotter import plot_measurement, get_data_summary
+from config import get_report_dir
 
 
-# Default paths
-DEFAULT_REPORT_DIR = Path("/home/bears/.openclaw/workspace/reports")
+DEFAULT_REPORT_DIR = get_report_dir()
 
 
 class ExperimentReport:
@@ -98,21 +97,23 @@ class ExperimentReport:
         """Add data summary."""
         df = extract_measurement_data(self.run_id, self.command_name)
         fp = generate_fingerprint(self.run_id, self.command_name)
-        
+
         if df.empty:
             self.sections.append(("summary", "## Data Summary\n\nNo data available."))
             return self
-        
-        pot_range = fp.get('potential_range', [0, 0])
-        curr_range = fp.get('current_range', [0, 0])
-        
+
+        x_col = fp.get("x_column", "col_0")
+        y_col = fp.get("y_column", "col_1")
+        x_range = fp.get("x_range", [0, 0])
+        y_range = fp.get("y_range", [0, 0])
+
         section = f"""## Data Summary
 
 | Metric | Value |
 |--------|-------|
 | Data Points | {len(df)} |
-| Potential Range | [{pot_range[0]:.3f}, {pot_range[1]:.3f}] V |
-| Current Range | [{curr_range[0]:.2e}, {curr_range[1]:.2e}] A |
+| {x_col} Range | [{x_range[0]:.3f}, {x_range[1]:.3f}] |
+| {y_col} Range | [{y_range[0]:.2e}, {y_range[1]:.2e}] |
 """
         self.sections.append(("summary", section))
         return self
@@ -269,9 +270,9 @@ def generate_report(
     # Add plot if requested
     if include_plot:
         report.add_plot(
-            title="CV Curve",
-            plot_function=plot_cv,
-            plot_kwargs={"run_id": run_id}
+            title=f"{command_name} Curve",
+            plot_function=plot_measurement,
+            plot_kwargs={"run_id": run_id, "command": command_name}
         )
     
     # Generate output path
@@ -308,7 +309,7 @@ if __name__ == "__main__":
     report.add_metadata()
     report.add_hashes()
     report.add_summary()
-    report.add_plot("CV Curve", plot_cv, {"run_id": run_id})
+    report.add_plot("CV Curve", plot_measurement, {"run_id": run_id, "command": "CV"})
     report.add_table("Quick Stats", {"test": "value", "another": "thing"})
     report.add_markdown("## Notes\nThis is a custom note about the experiment.")
     path = report.save()
