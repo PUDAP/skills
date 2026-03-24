@@ -39,7 +39,7 @@ Each command:
 2. **Protocol ID and timestamp**: Generate UUID and ISO datetime (e.g. via Python `uuid.uuid4()` and `datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")`).
 3. **Machine references**: Use `puda-machines` skill to understand the machines and available commands
 4. **Generate**: Create a new JSON file under the experiment’s **protocols/** directory. Filename = `protocol_id.json`. When modifying a protocol, **always create a new file and new protocol_id** — do not overwrite.
-5. **Validate**: Run `puda protocol validate -f <file_name>` before running using `puda protocol run -f <file_name>`.
+5. **Validate**: Run `puda protocol validate -f <file_name>` to validate the protocol.
 6. **Update experiment**: **Must** invoke the **puda-memory** skill right after creating/updating the file so experiment.md is updated.
 
 ## Output Format (JSON)

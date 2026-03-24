@@ -67,7 +67,7 @@ The following rules **must** be strictly followed when generating First machine 
   - `MEA_cell_MTP`
   - `polyelectric_8_wellplate_30000ul`
   - `trash_bin`
-- **`attach_tip`**: Can only be performed on `tiprack` labware
+- **`attach_tip`**: Can only be performed on `opentrons_96_tiprack_300ul` labware. If any other labware is specified, respond that it is not compatible with the pipette.
 - **`drop_tip`**: Can only be performed on `trash_bin` labware
 
 ## Instructions
