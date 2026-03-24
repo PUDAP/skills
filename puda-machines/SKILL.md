@@ -89,6 +89,25 @@ Before command generation:
 - Run `puda machine commands centrifuge` to understand available commands
 - Follow constraints in `references/centrifuge-machine.md`
 
+### Dobot M1Pro Machine (`machine_id: "dobot-m1pro"`)
+
+Use for **gripper-based tube transfers between fixed positions**.
+
+Capabilities:
+- Pick-and-place tube handling with a gripper
+- Moving tubes between predefined source and destination positions
+- Position-based transfer steps for centrifuge-to-plate workflows
+
+Use this machine when:
+- The user asks to transfer tubes with a gripper
+- The workflow involves moving tubes between known hardcoded positions
+- A step references Dobot M1Pro positions such as centrifuge tube or MTP coordinates
+
+Before command generation:
+- Refer to: [dobot-m1pro-machine](references/dobot-m1pro-machine.md)
+- Run `puda machine commands dobot-m1pro` to understand available commands
+- Follow constraints in `references/dobot-m1pro-machine.md`
+
 
 
 ## Selection Workflow
