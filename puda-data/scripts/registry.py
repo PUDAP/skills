@@ -36,35 +36,35 @@ class Schema:
 # Built-in schemas for common measurement types
 BUILTIN_SCHEMAS: Dict[Tuple[str, str], Schema] = {
     # First machine schemas
-    ("first", "CV"): Schema(
+    ("biologic", "CV"): Schema(
         columns=["potential", "current", "time", "extra", "flag"],
         data_path="response.data.0",
         units={"potential": "V", "current": "A", "time": "s"},
         primary_x="potential",
         primary_y="current",
     ),
-    ("first", "OCV"): Schema(
+    ("biologic", "OCV"): Schema(
         columns=["potential", "current", "time", "extra", "flag"],
         data_path="response.data.0",
         units={"potential": "V", "current": "A", "time": "s"},
         primary_x="time",
         primary_y="potential",
     ),
-    ("first", "CA"): Schema(
+    ("biologic", "CA"): Schema(
         columns=["time", "current", "voltage", "extra", "flag"],
         data_path="response.data.0",
         units={"time": "s", "current": "A", "voltage": "V"},
         primary_x="time",
         primary_y="current",
     ),
-    ("first", "PEIS"): Schema(
+    ("biologic", "PEIS"): Schema(
         columns=["frequency", "Z_real", "Z_imag", "phase", "flag"],
         data_path="response.data.0",
         units={"frequency": "Hz", "Z_real": "Ω", "Z_imag": "Ω", "phase": "rad"},
         primary_x="frequency",
         primary_y="Z_real",
     ),
-    ("first", "GEIS"): Schema(
+    ("biologic", "GEIS"): Schema(
         columns=["frequency", "Z_real", "Z_imag", "phase", "flag"],
         data_path="response.data.0",
         units={"frequency": "Hz", "Z_real": "Ω", "Z_imag": "Ω", "phase": "rad"},
