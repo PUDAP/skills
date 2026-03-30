@@ -108,6 +108,24 @@ Before command generation:
 - Run `puda machine commands dobot-m1pro` to understand available commands
 - Follow constraints in `references/dobot-m1pro-machine.md`
 
+### BioShake Machine (`machine_id: "bioshake"`)
+
+Use for **shaking, heating, and plate clamping operations**.
+
+Capabilities:
+- Shaking at a specified RPM for a given duration
+- Heating (or cooling) to a target temperature and holding for a given duration
+- Clamping and unclamping plates on the shaker
+- Homing the shaker to its locked home position
+
+Use this machine when:
+- The user asks to shake, vortex, or mix a plate on a shaker
+- The user asks to heat or incubate a plate at a specific temperature
+- The user asks to clamp or unclamp a plate on the BioShake
+- The workflow requires holding a plate at temperature while shaking
+
+Before command generation:
+- Run `puda machine commands bioshake` to understand available commands
 
 
 ## Selection Workflow
