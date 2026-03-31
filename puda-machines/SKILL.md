@@ -141,3 +141,7 @@ Before command generation:
 When answering machine-selection questions:
 - State the recommended machine and a one-line reason tied to capability.
 - If uncertain, ask a direct clarification question instead of guessing.
+
+## Critical sequencing rules
+1. `bioshake` must not be shaking while any machine is operating on a Bioshake position.
+2. `centrifuge` must not be spinning while any machine is operating on a Centrifuge position.

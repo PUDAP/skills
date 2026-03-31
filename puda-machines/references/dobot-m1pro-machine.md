@@ -38,7 +38,7 @@ If the user requests a position that is not listed here, verify the requested lo
 
 ### Centrifuge
 
-Centrifuge is a 6-slot circular holder. Slots are evenly spaced at 60° intervals.
+There are 2 centrifuges, both have 6 slots in a circular formation. Slots are evenly spaced at 60° intervals.
 
 **Centrifuge 2 Positions**
 | Slot | Coordinates            |
@@ -115,6 +115,6 @@ Apply these rules when preparing Dobot M1Pro commands:
 
 ## Best Practices
 
-- Prefer named positions (e.g. bioshake A1, Centrifuge 2 Slot 3) over repeating raw coordinates in explanations.
+- Prefer named positions (e.g. BioShake A1, Centrifuge 2 Slot 3) over repeating raw coordinates in explanations.
 - Keep source and destination positions explicit in every transfer step.
 - Ask for missing transfer details instead of guessing.
