@@ -96,7 +96,7 @@ Use for **gripper-based tube transfers between fixed positions**.
 Capabilities:
 - Pick-and-place tube handling with a gripper
 - Moving tubes between predefined source and destination positions
-- Position-based transfer steps for centrifuge-to-plate workflows
+- Position-based transfer steps between pipqubotv3, bioshake, centrifuge machines
 
 Use this machine when:
 - The user asks to transfer tubes with a gripper
