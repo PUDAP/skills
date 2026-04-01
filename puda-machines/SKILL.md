@@ -1,6 +1,6 @@
 ---
 name: puda-machines
-description: Discover PUDA machine capabilities and choose the right machines for protocol generation. Use when you need to know more about a machine or how to use a machine.
+description: Discover PUDA machine capabilities and choose the right machines for protocol generation. Use when you need to know more about a machine, how to use a machine, or how to generate commands and protocols for any PUDA-connected machine including Opentrons OT-2.
 ---
 
 # PUDA Machines
@@ -127,6 +127,32 @@ Use this machine when:
 Before command generation:
 - Run `puda machine commands bioshake` to understand available commands
 
+### Opentrons Machine (`machine_id: "opentrons"`)
+
+Use for **automated liquid handling and full protocol generation on the Opentrons OT-2 robot**.
+
+Capabilities:
+- Full protocol code generation via `Protocol.to_python_code()` — produces valid runnable OT-2 Python
+- Pipetting workflows: `aspirate`, `dispense`, `mix`, `transfer` (with auto-chunking for large volumes)
+- Tip management: `pick_up_tip`, `drop_tip`
+- Deck and labware setup: `load_labware`, `load_instrument`
+- Flow control: `flow_rate`, `air_gap`, `blow_out`, `touch_tip`, `move_to`
+- Protocol utilities: `delay`, `comment`, `home`
+- CSV-driven loops: `read_csv_file` + `loop` for data-driven protocols
+- Custom labware support: AMDM mass balance vials (30 mL, 50 mL) loaded inline
+- All gen2 pipette types: p10, p20, p300, p1000 (single and multi-channel)
+
+Use this machine when:
+- The user references an Opentrons OT-2 robot
+- The task involves generating a complete OT-2 protocol or individual liquid handling commands
+- The user mentions Opentrons labware (tip racks, well plates, reservoirs, NEST, Corning, mass balance vials)
+- The workflow requires data-driven dispensing from a CSV file
+
+Before command generation:
+- Refer to: [opentrons-machine](references/opentrons-machine.md)
+- Run `puda machine commands opentrons` to understand available commands
+- Follow all command types, params, sequencing rules, and labware constraints in `references/opentrons-machine.md`
+
 
 ## Selection Workflow
 
@@ -145,3 +171,5 @@ When answering machine-selection questions:
 ## Critical sequencing rules
 1. `bioshake` must not be shaking while any machine is operating on a Bioshake position.
 2. `centrifuge` must not be spinning while any machine is operating on a Centrifuge position.
+3. `opentrons` protocols must always end with no tip attached to any pipette.
+
