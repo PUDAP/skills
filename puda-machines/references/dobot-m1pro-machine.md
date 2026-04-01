@@ -91,6 +91,20 @@ The BioShake is a 4-row (A-D) x 6-column (1-6) grid.
 | D5       | `[203, -237, 60, -70]` |
 | D6       | `[183, -237, 60, -70]` |
 
+### Example Command
+
+```json
+{
+  "machine_id": "dobot-m1pro",
+  "name": "pick_from",
+  "params": {
+    "position": [283, -177, 60, -70]
+  }
+}
+```
+
+This picks a tube from BioShake position A1. Use `place_to` with the same position format when placing tubes.
+
 ## Required Information
 
 Before generating a Dobot M1Pro command, confirm:
