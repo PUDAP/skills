@@ -3,8 +3,6 @@ name: puda-analysis
 description: Data analysis using puda with Python. Use when users want to explore puda database data, run data analysis, create data visualizations, or work with puda data in Python.
 ---
 
-# Puda Data Analysis
-
 ## Goal
 
 Perform data analysis on the puda SQLite database in Python inside the **analysis/** directory: understand the schema, load data into pandas, and perform analysis and plotting.

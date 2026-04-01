@@ -35,7 +35,8 @@ Each command:
 
 ## Instructions
 
-1. **Ensure project exists**: If there is no project yet, ask the user for the project name and description before continuing, then run `puda project create` to create the project folder.
+1. **Ensure user is logged in**: Run `puda login` and confirm the user is authenticated before proceeding.
+2. **Ensure project exists**: If there is no project yet, ask the user for the project name and description before continuing, then use `puda init` to create the project folder.
 2. **User info**: Run `puda config list` for `user_id` and `username`.
 3. **Protocol ID and timestamp**: Generate UUID and ISO datetime (e.g. via Python `uuid.uuid4()` and `datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")`).
 4. **Machine references**: Use `puda-machines` skill to understand the machines and available commands.
