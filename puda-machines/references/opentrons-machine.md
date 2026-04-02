@@ -68,7 +68,7 @@ Loads a labware onto a deck slot. Must come before any command that references t
 |---|---|---|
 | `name` | yes | Unique reference name used in subsequent commands |
 | `labware_type` | yes | Load name from [labware.md](labware.md) |
-| `location` | yes | Deck slot (OT-2: `"1"`–`"11"`) |
+| `location` | yes | Deck slot (OT-2: `"1"`–`"11"`) — **always ask the user; never assume** |
 
 > **Custom labware** (`mass_balance_vial_30000`, `mass_balance_vial_50000`): automatically loaded via `protocol.load_labware_from_definition()` — the definition is inlined in the generated code. No separate upload required.
 
@@ -351,6 +351,7 @@ Iterates over rows in `data` (populated by `read_csv`). Each iteration exposes t
 
 - If any information is missing from the user's request, **do not assume or guess values**. Use a placeholder (e.g., `"PLACEHOLDER"`) and explicitly ask the user.
 - If the labware only has one well, it is safe to assume `well: "A1"` without asking.
+- **`location` (deck slot) for `load_labware`**: **Always ask the user** which deck slot each labware should be placed on. Do **not** assume or assign default slot numbers. Wait for the user to confirm the slot before generating the command.
 
 ### Available Deck Slots
 
