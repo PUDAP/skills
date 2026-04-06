@@ -44,7 +44,6 @@ This reference defines each available labware, what it is used for, and its vali
 
 ## Opentrons Labware
 
-> Source: [PUDAP/opentrons — driver/protocol.py](https://github.com/PUDAP/opentrons/blob/main/driver/protocol.py)
 
 ### Standard Labware
 
@@ -117,9 +116,6 @@ This reference defines each available labware, what it is used for, and its vali
 - **Well volume:** 200 uL
 
 ### Custom Labware
-
-> Source: [PUDAP/opentrons — driver/labware/](https://github.com/PUDAP/opentrons/tree/main/driver/labware)  
-> Custom labware is loaded via `protocol.load_labware_from_definition()` — the definition is embedded inline in the generated protocol.
 
 #### `mass_balance_vial_30000`
 
