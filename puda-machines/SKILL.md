@@ -127,6 +127,28 @@ Use this machine when:
 Before command generation:
 - Run `puda machine commands bioshake` to understand available commands
 
+### Balance Machine
+
+Use for **gravimetric mass measurement via an Arduino-based USB load-cell balance on Linux**.
+
+Capabilities:
+- Continuous calibrated mass readings from a load-cell over USB serial (`/dev/ttyUSB*` or `/dev/ttyACM*`)
+- Background reader thread streaming readings at ~4 Hz; no polling required
+- Tare command to zero the balance before a dispense step
+- Freshness check (`fresh` flag) to detect stale/disconnected readings
+- NATS telemetry publishing via the edge service
+- Custom calibration CSV support
+
+Use this machine when:
+- The workflow requires weighing a container before or after a liquid transfer
+- The user asks for gravimetric calibration, transfer error calculation, or balance feedback
+- The task involves viscosity or transfer accuracy experiments needing mass data
+
+Before use:
+- Refer to: [balance-machine](references/balance-machine.md)
+- Ask the user for the **Linux serial port** (`/dev/ttyUSB1`, etc.) — do not assume
+- Ensure the edge service is running (`uv run --package balance-edge python edge/balance.py`)
+
 ### Opentrons Machine (`machine_id: "opentrons"`)
 
 Use for **automated liquid handling and full protocol generation on the Opentrons OT-2 robot**.
@@ -172,4 +194,5 @@ When answering machine-selection questions:
 1. `bioshake` must not be shaking while any machine is operating on a Bioshake position.
 2. `centrifuge` must not be spinning while any machine is operating on a Centrifuge position.
 3. `opentrons` protocols must always end with no tip attached to any pipette.
+4. `balance` — always call `startup()` before reading and `shutdown()` after. Always tare before a dispense step. Always verify `fresh == True` before using a reading.
 

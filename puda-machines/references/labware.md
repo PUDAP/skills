@@ -43,8 +43,6 @@ This reference defines each available labware, what it is used for, and its vali
 - **Total wells:** 96
 
 ## Opentrons Labware
-
-
 ### Standard Labware
 
 #### `corning_96_wellplate_360ul_flat`

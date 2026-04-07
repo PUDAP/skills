@@ -224,12 +224,6 @@ exp.setup()   # interactive wizard — asks all inputs above
 exp.run()
 ```
 
-Or skip the wizard by building `ExperimentConfig` directly — see
-[viscosity-optimization-guide.md](../../viscosity-optimization/references/viscosity-optimization-guide.md)
-for a full worked example.
-
----
-
 ## Data Folders
 
 | Folder | Contents |

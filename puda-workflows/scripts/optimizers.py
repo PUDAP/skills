@@ -20,13 +20,21 @@ import json
 import os
 from abc import ABC, abstractmethod
 
-import torch
-from botorch.acquisition import LogExpectedImprovement, UpperConfidenceBound
-from botorch.fit import fit_gpytorch_mll
-from botorch.models import SingleTaskGP
-from botorch.optim import optimize_acqf
-from gpytorch.mlls import ExactMarginalLogLikelihood
 from openai import OpenAI
+
+# torch / botorch / gpytorch are only required by the BO optimizers.
+# Imported lazily inside BOOptimizer.__init__ so that LLMOptimizer can be
+# used without installing the full torch stack.
+try:
+    import torch
+    from botorch.acquisition import LogExpectedImprovement, UpperConfidenceBound
+    from botorch.fit import fit_gpytorch_mll
+    from botorch.models import SingleTaskGP
+    from botorch.optim import optimize_acqf
+    from gpytorch.mlls import ExactMarginalLogLikelihood
+    _BO_AVAILABLE = True
+except ImportError:
+    _BO_AVAILABLE = False
 
 
 # ---------------------------------------------------------------------------
@@ -81,17 +89,21 @@ class BOOptimizer(ABC):
         )
     ]
 
-    # Equality constraint: indices [0,1,2], coefficients [1,1,1], rhs = 1.0
-    # Enforces x1 + x2 + x3 = 1 in normalised space during optimize_acqf.
-    _EQUALITY_CONSTRAINTS = [
-        (
-            torch.tensor([0, 1, 2]),          # indices of all three dimensions
-            torch.tensor([1.0, 1.0, 1.0]),    # coefficients
+    def __init__(
         self,
         total_volume: float,
         num_restarts: int = 10,
         raw_samples: int = 64,
     ) -> None:
+        self.total_volume = total_volume
+        self.num_restarts = num_restarts
+        self.raw_samples = raw_samples
+
+        self._bounds = torch.zeros(2, self.N_DIMS)
+        self._bounds[1] = 1.0
+
+        self._train_X: list[list[float]] = []  # normalised inputs
+        self._train_Y: list[float] = []         # negated RMSE
 
     # ------------------------------------------------------------------
     # Public API
@@ -141,7 +153,7 @@ class BOOptimizer(ABC):
         )
 
         return self._denormalise_and_constrain(candidate)
-            equality_constraints=self._EQUALITY_CONSTRAINTS,
+
     @property
     def n_observations(self) -> int:
         """Number of observations recorded so far."""
