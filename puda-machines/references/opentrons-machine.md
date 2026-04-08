@@ -43,6 +43,7 @@ The following rules **must** be strictly followed when generating Opentrons comm
 - If any information is missing from the user's request, **do not assume or guess values**. Use a placeholder value (e.g., `"PLACEHOLDER"` or `"?"`) in the command and explicitly ask the user to provide the missing information.
 - If the labware only has one well, it is safe to assume `well: "A1"` without asking the user.
 - **`location` (deck slot) for `load_labware`**: Always ask the user which deck slot each labware should go on. Do **not** assume or assign default slot numbers.
+- **Multiple source labware (e.g. RGB dye plates)**: If the protocol loads separate labware for red, green, and blue dye (or any parallel sources), ask for **one deck slot per labware** — never ask only for “the dye plate” and apply the same slot to every source.
 
 ### Available Deck Slots
 

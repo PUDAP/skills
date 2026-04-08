@@ -43,10 +43,19 @@ Collect all of the following before starting. Do not proceed until every value i
 |---|---|
 | Target colour | `(R, G, B)` where each value is 0–255 |
 | Total well volume | Total volume in µL per well (e.g. 300 µL) |
+| **R dye source — deck slot** | OT-2 deck slot (`"1"`–`"11"`) for the labware holding **red** dye only |
+| **G dye source — deck slot** | Deck slot for the labware holding **green** dye only |
+| **B dye source — deck slot** | Deck slot for the labware holding **blue** dye only |
 | `x_init` — 3 initial mixes | User-provided volume sets (see below) |
 | Optimization approach | BO (EI or LCB) or LLM (choose model) |
 | RMSE threshold | Stop when RMSE ≤ this value |
 | Maximum iterations | Stop after this many iterations |
+
+**Critical — RGB dye labware are three separate deck positions**
+
+The R, G, and B dyes are loaded as **three independent `load_labware` calls** with **three separate `location` values**. You must **ask the user for each slot individually** (R, then G, then B — or present one form with three distinct fields). **Do not** ask a single question such as “which slot is the dye plate?” and reuse that answer for R, G, and B. **Do not** assume all three dye plates share the same slot.
+
+When generating protocols, map aspirate sources to the user’s **R slot / G slot / B slot** explicitly — never copy one slot onto all three dye labware loads.
 
 **`x_init` — Initial volume inputs**
 
@@ -138,6 +147,7 @@ On stop: generate a final summary report and save to `logs/`.
 ## Rules
 
 - Always ask for target colour, RMSE threshold, and max iterations **before** starting.
+- Always collect **three separate deck slots** for R, G, and B dye source labware before any `load_labware` for those sources; never use one slot for all three.
 - Never assume volume ratios — they must come from the optimizer at each iteration.
 - Image names must follow `Base-colour-RGB-exp-<N>.jpg` exactly.
 - Protocol must always end with no tip attached (Opentrons sequencing rule).
