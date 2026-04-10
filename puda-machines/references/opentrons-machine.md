@@ -68,40 +68,6 @@ The following rules **must** be strictly followed when generating Opentrons comm
 | `p1000_single_gen2` | up to 1000 µL | single |
 | `p1000_multi_gen2` | up to 1000 µL | 8 |
 
-### Camera Capture
-
-The opentrons edge service supports an attached USB camera via the `capture_image` command. Camera support is **optional** — the command is only available when `CAMERA_DEVICE` is set in the edge `.env`.
-
-**Edge `.env` variables:**
-- `CAMERA_DEVICE`: Device index (e.g. `0`) or path (e.g. `/dev/video0`). Overrides `camera_index` at connect time. Leave unset to run without a camera.
-- `CAMERA_RESOLUTION`: Resolution as `WIDTHxHEIGHT` (e.g. `1280x720`). Omit to use camera default.
-- `CAMERA_CAPTURES_FOLDER`: Folder for saved images. Defaults to `captures` (relative to edge CWD).
-
-**Command:**
-```json
-{
-  "step_number": 1,
-  "name": "capture_image",
-  "machine_id": "opentrons",
-  "params": {
-    "filename": "well_A1_capture.jpg"
-  }
-}
-```
-
-**Parameters:**
-- `filename` (string, optional): Filename for the saved image. Auto-generates `capture_YYYYMMDD_HHMMSS.jpg` if omitted. `.jpg` appended if no extension given. Relative paths resolve inside `captures_folder`.
-
-**Response:**
-- `path` (string): Path of the saved image — `captures_folder/filename`, relative to edge CWD unless `CAMERA_CAPTURES_FOLDER` is set to an absolute path.
-- `saved` (bool): `True` if the file exists after capture.
-
-**Restrictions:**
-- `capture_image` must be its own protocol — do **not** mix it with `load_labware` or pipetting commands in the same protocol.
-- Camera capture uses the V4L2 backend and is **Linux-only**.
-- If no camera is configured, `capture_image` raises `RuntimeError` on the edge.
-- Image format is always JPEG (`.jpg`).
-
 ### Custom Labware
 
 - `mass_balance_vial_30000` and `mass_balance_vial_50000` are custom labware.
@@ -126,3 +92,106 @@ The opentrons edge service supports an attached USB camera via the `capture_imag
 2. **Verify sequencing and constraints**: **Always** verify that commands follow all rules in the "Rules and Restrictions" section, including: correct load order, `home` placement, `pick_up_tip` → pipetting → `drop_tip` sequencing so the protocol ends with no tip attached, valid deck slots, labware compatibility, volume constraints, and proper handling of missing information.
 
 3. **Generate command**: Create a command object with `machine_id: "opentrons"`, appropriate `name` and `params`.
+
+---
+
+## Robot-On-Board Camera Capture
+
+The OT-2 robot has a USB camera physically mounted on the robot frame, positioned to capture a consistent top-down view of the deck. The Opentrons edge service exposes this camera via the `capture_image` command. Camera support is **optional** — only available when `CAMERA_DEVICE` is set in the edge `.env`.
+
+**Physical setup:**
+- The camera is fixed to the OT-2 robot frame — its position relative to the deck is constant across captures.
+- Do **not** move or adjust the camera during an experiment. If the camera is physically moved, re-run `calibrate_camera()` in the image processing pipeline before the next experiment loop.
+- Use consistent, stable lighting for every session. Lighting changes can cause colour-processing errors.
+
+**Edge `.env` variables:**
+- `CAMERA_DEVICE`: Device index (e.g. `0`) or path (e.g. `/dev/video0`) pointing to the on-board camera. Leave unset to run without a camera.
+- `CAMERA_RESOLUTION`: Resolution as `WIDTHxHEIGHT` (e.g. `1280x720`). Omit to use camera default.
+- `CAMERA_CAPTURES_FOLDER`: Folder for saved images. Defaults to `captures` (relative to edge CWD).
+
+**Command:**
+```json
+{
+  "step_number": 1,
+  "name": "capture_image",
+  "machine_id": "opentrons",
+  "params": {
+    "filename": "Base-colour-RGB-exp-1.jpg"
+  }
+}
+```
+
+**Parameters:**
+- `filename` (string, optional): Filename for the saved image. Auto-generates `capture_YYYYMMDD_HHMMSS.jpg` if omitted. `.jpg` appended if no extension given. Relative paths resolve inside `captures_folder`.
+
+**Recommended filename convention** (for colour mixing experiments):
+```
+Base-colour-RGB-exp-<N>.jpg
+```
+
+**Response:**
+- `path` (string): Path of the saved image — `captures_folder/filename`, relative to edge CWD unless `CAMERA_CAPTURES_FOLDER` is set to an absolute path.
+- `saved` (bool): `True` if the file exists after capture.
+
+**Restrictions:**
+- `capture_image` must be its own protocol — do **not** mix with `load_labware` or pipetting commands in the same protocol.
+- Uses the V4L2 backend — **Linux-only**.
+- If no camera is configured, `capture_image` raises `RuntimeError` on the edge.
+- Image format is always JPEG (`.jpg`).
+
+**Image processing pipeline:**
+On-board captures feed directly into the colour-mixing image processing pipeline (see [image-processing](../../puda-workflows/references/image-processing.md)):
+1. Call `calibrate_camera(reference_image_path)` **once** before the experiment loop — sets perspective correction, crop box, and ROI parameters from a reference on-board capture.
+2. Call `capture_image` at each iteration to get the new image.
+3. Call `run_pipeline(image_path, params)` on each captured image to extract per-well mean RGB values.
+4. If the camera is physically moved between sessions, re-run `calibrate_camera()` before the next loop.
+
+---
+
+## External Camera Capture
+
+An external USB camera (not mounted on the robot) can also be used with the `capture_image` command. The `.env` configuration is identical to the on-board setup, but the camera is positioned independently of the robot — typically on a stand or overhead rig pointed at the deck.
+
+**Physical setup:**
+- The camera is placed externally, independent of the OT-2 robot frame.
+- Fix the camera position and angle firmly before starting an experiment — any shift invalidates the calibration.
+- Do **not** move or adjust the camera during an experiment. If the camera is moved, re-run `calibrate_camera()` before the next experiment loop.
+- Use consistent, stable lighting. Lighting changes can cause colour-processing errors.
+- If both an on-board and an external camera are connected, verify `CAMERA_DEVICE` points to the correct device index before starting the edge service.
+
+**Edge `.env` variables:**
+- `CAMERA_DEVICE`: Device index (e.g. `1`) or path (e.g. `/dev/video1`) pointing to the external camera. Use a different index than the on-board camera if both are connected.
+- `CAMERA_RESOLUTION`: Resolution as `WIDTHxHEIGHT` (e.g. `1920x1080`). Omit to use camera default.
+- `CAMERA_CAPTURES_FOLDER`: Folder for saved images. Defaults to `captures` (relative to edge CWD).
+
+**Command** (identical to on-board):
+```json
+{
+  "step_number": 1,
+  "name": "capture_image",
+  "machine_id": "opentrons",
+  "params": {
+    "filename": "ext-capture-exp-1.jpg"
+  }
+}
+```
+
+**Parameters:**
+- `filename` (string, optional): Filename for the saved image. Auto-generates `capture_YYYYMMDD_HHMMSS.jpg` if omitted. `.jpg` appended if no extension given.
+
+**Response:**
+- `path` (string): Path of the saved image — `captures_folder/filename`, relative to edge CWD unless `CAMERA_CAPTURES_FOLDER` is set to an absolute path.
+- `saved` (bool): `True` if the file exists after capture.
+
+**Restrictions:**
+- `capture_image` must be its own protocol — do **not** mix with `load_labware` or pipetting commands.
+- Uses the V4L2 backend — **Linux-only**.
+- If no camera is configured, `capture_image` raises `RuntimeError` on the edge.
+- Image format is always JPEG (`.jpg`).
+
+**Image processing pipeline:**
+External camera captures use the same pipeline as on-board captures (see [image-processing](../../puda-workflows/references/image-processing.md)):
+1. Call `calibrate_camera(reference_image_path)` **once** using a reference image taken from the external camera's fixed position.
+2. Call `capture_image` at each iteration.
+3. Call `run_pipeline(image_path, params)` to extract per-well mean RGB values.
+4. Any change in camera angle, zoom, or position requires a fresh `calibrate_camera()` run.

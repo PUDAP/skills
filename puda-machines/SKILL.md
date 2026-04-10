@@ -163,14 +163,16 @@ Capabilities:
 - CSV-driven loops: `read_csv_file` + `loop` for data-driven protocols
 - Custom labware: AMDM mass balance vials (30 mL, 50 mL) loaded inline via `load_labware_from_definition`
 - All gen2 pipette types: p10, p20, p300, p1000 (single and multi-channel)
-- Camera image capture: `capture_image` command via attached USB camera (Linux, V4L2, optional)
+- Robot-on-board camera capture: `capture_image` via USB camera physically mounted on the OT-2 robot frame (Linux, V4L2, optional); fixed deck-view position for consistent image processing
+- External camera capture: `capture_image` via a separately positioned USB camera (same command, different `CAMERA_DEVICE` index); camera must be fixed independently and re-calibrated if moved
 
 Use this machine when:
 - The user references an Opentrons OT-2 robot
 - The task involves generating a complete OT-2 protocol or individual liquid handling commands
 - The user mentions Opentrons labware (tip racks, well plates, reservoirs, NEST, Corning, mass balance vials)
 - The workflow requires data-driven dispensing from a CSV file
-- The user asks to capture an image during or after a liquid handling workflow
+- The user asks to capture an image using the robot-on-board camera or an external USB camera during or after a liquid handling workflow
+- The workflow requires deck image capture (on-board or external) for colour analysis or visual inspection of wells
 
 Before command generation:
 - Refer to: [opentrons-machine](references/opentrons-machine.md)
@@ -199,5 +201,6 @@ When answering machine-selection questions:
 3. `opentrons` protocols must always end with no tip attached to any pipette.
 4. `opentrons` deck slot (`location`) for every `load_labware` command must be explicitly confirmed by the user — **never assume a slot**.
 5. `opentrons` `capture_image` must be its own standalone protocol — never combined with pipetting commands in the same protocol.
-6. `balance` — always call `startup()` before reading and `shutdown()` after. Always tare before a dispense step. Always verify `fresh == True` before using a reading.
+6. `opentrons` camera (on-board or external) — do **not** move or adjust the camera during an experiment. If the camera is physically moved, re-run `calibrate_camera()` before the next experiment loop. Use consistent lighting for every session. If both cameras are connected, verify `CAMERA_DEVICE` points to the correct device before starting the edge service.
+7. `balance` — always call `startup()` before reading and `shutdown()` after. Always tare before a dispense step. Always verify `fresh == True` before using a reading.
 
