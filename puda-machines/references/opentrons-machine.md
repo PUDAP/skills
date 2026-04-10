@@ -1,6 +1,6 @@
 ---
 name: opentrons-machine
-description: Generate commands and full protocols for Opentrons OT-2 liquid handling robots, including labware loading, tip management, pipetting, and protocol code generation.
+description: Generate commands and full protocols for Opentrons OT-2 liquid handling robots, including labware loading, tip management, pipetting, protocol code generation, and camera image capture.
 ---
 
 # Opentrons Machine Skills
@@ -67,6 +67,40 @@ The following rules **must** be strictly followed when generating Opentrons comm
 | `p300_multi_gen2` | up to 300 µL | 8 |
 | `p1000_single_gen2` | up to 1000 µL | single |
 | `p1000_multi_gen2` | up to 1000 µL | 8 |
+
+### Camera Capture
+
+The opentrons edge service supports an attached USB camera via the `capture_image` command. Camera support is **optional** — the command is only available when `CAMERA_DEVICE` is set in the edge `.env`.
+
+**Edge `.env` variables:**
+- `CAMERA_DEVICE`: Device index (e.g. `0`) or path (e.g. `/dev/video0`). Overrides `camera_index` at connect time. Leave unset to run without a camera.
+- `CAMERA_RESOLUTION`: Resolution as `WIDTHxHEIGHT` (e.g. `1280x720`). Omit to use camera default.
+- `CAMERA_CAPTURES_FOLDER`: Folder for saved images. Defaults to `captures` (relative to edge CWD).
+
+**Command:**
+```json
+{
+  "step_number": 1,
+  "name": "capture_image",
+  "machine_id": "opentrons",
+  "params": {
+    "filename": "well_A1_capture.jpg"
+  }
+}
+```
+
+**Parameters:**
+- `filename` (string, optional): Filename for the saved image. Auto-generates `capture_YYYYMMDD_HHMMSS.jpg` if omitted. `.jpg` appended if no extension given. Relative paths resolve inside `captures_folder`.
+
+**Response:**
+- `path` (string): Path of the saved image — `captures_folder/filename`, relative to edge CWD unless `CAMERA_CAPTURES_FOLDER` is set to an absolute path.
+- `saved` (bool): `True` if the file exists after capture.
+
+**Restrictions:**
+- `capture_image` must be its own protocol — do **not** mix it with `load_labware` or pipetting commands in the same protocol.
+- Camera capture uses the V4L2 backend and is **Linux-only**.
+- If no camera is configured, `capture_image` raises `RuntimeError` on the edge.
+- Image format is always JPEG (`.jpg`).
 
 ### Custom Labware
 

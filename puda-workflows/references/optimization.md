@@ -14,8 +14,8 @@ description: BO and LLM optimization approaches for colour mixing RMSE minimizat
 
 | Class | Acquisition | When to use |
 |---|---|---|
-| `BOOptimizerEI` | `LogExpectedImprovement` (EI) | Default; balances exploration and exploitation; good for most cases |
-| `BOOptimizerLCB` | `UpperConfidenceBound` (LCB) | More explorative; useful when the RMSE landscape is uncertain or noisy |
+| `SOCM_BOEI` | `LogExpectedImprovement` (EI) | Default; balances exploration and exploitation; good for most cases |
+| `SOCM_BOLCB` | `UpperConfidenceBound` (LCB) | More explorative; useful when the RMSE landscape is uncertain or noisy |
 
 Ask the user which class to use before initializing.
 
@@ -27,13 +27,13 @@ Ask the user which class to use before initializing.
 
 **Usage**:
 ```python
-from scripts.optimizers import BOOptimizerEI, BOOptimizerLCB
+from scripts.optimizers import SOCM_BOEI, SOCM_BOLCB
 
 # EI
-optimizer = BOOptimizerEI(total_volume=300.0)
+optimizer = SOCM_BOEI(total_volume=300.0)
 
 # LCB — beta controls exploration (higher = more explorative, default 2.0)
-optimizer = BOOptimizerLCB(total_volume=300.0, beta=2.0)
+optimizer = SOCM_BOLCB(total_volume=300.0, beta=2.0)
 
 # Seed with x_init results
 for volumes, rmse in x_init_results:
@@ -52,7 +52,7 @@ next_volumes = optimizer.suggest()  # [R_vol, G_vol, B_vol] in µL
 **Provider**: OpenRouter (`https://openrouter.ai/api/v1`)  
 **API key**: set as environment variable `OPENROUTER_API_KEY`
 
-**Class**: `LLMOptimizer`
+**Class**: `SOCM_LLM` (alias: `LLMOptimizer`) — single objective (RMSE).
 
 Ask the user which model to use before initializing. Do not assume a default.
 
