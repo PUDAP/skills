@@ -13,11 +13,13 @@ Perspective correction uses PIL's Image.PERSPECTIVE transform and a
 find_coeffs() solver — no OpenCV required.
 
 Calibration flow (run once):
-    Step 1  — VLM detects plate corners from the raw image
-    Step 2  — Apply perspective correction → flat top-down view
-    Step 3  — VLM detects wellplate crop box from the corrected image
-    Step 4  — Crop to wellplate area
-    Step 5  — VLM detects ROI patch size and stride from the cropped image
+    Step 1  — VLM detects the four outer corners of the OT-2 DECK PLATFORM
+              from the raw angled camera image (not individual labware corners)
+    Step 2  — Apply perspective correction → flat top-down view of the full deck
+    Step 3  — VLM locates the target wellplate in the corrected deck image
+              and returns its crop_box in corrected image pixels
+    Step 4  — Crop corrected deck image to the wellplate area
+    Step 5  — VLM detects ROI patch size and stride from the cropped wellplate image
 
 Three-level per-iteration pipeline (no VLM):
     Level 1  — Correct perspective → crop to plate →
@@ -265,38 +267,49 @@ def _vlm_call(
 # ---------------------------------------------------------------------------
 
 VLM_CALIBRATE_CORNERS_PROMPT = """\
-This is an image captured by an external camera showing a laboratory well plate.
+This is an image captured by an overhead camera mounted above an Opentrons OT-2 \
+liquid handling robot. The camera is slightly angled, so the image is not a \
+perfect top-down view — the deck appears in perspective.
 
-Identify the well plate and return its four corner pixel coordinates in the image.
+Your task is to find the four outer corners of the OT-2 deck platform (the large \
+flat white/light-grey rectangular surface that holds all the labware). These \
+corners will be used to apply a perspective correction that produces a flat, \
+straight top-down view of the entire deck.
+
+Do NOT return corners of any individual labware item (well plates, tip racks, \
+vials, etc.). Return the corners of the DECK PLATFORM BOUNDARY itself.
 
 Return ONLY valid JSON, no explanation:
 {
   "plate_corners": [[x1,y1],[x2,y2],[x3,y3],[x4,y4]]
 }
 
-Order: top-left, top-right, bottom-right, bottom-left.
+Order: top-left, top-right, bottom-right, bottom-left of the deck platform.
 """
 
 VLM_CALIBRATE_CROP_PROMPT = """\
-This is a perspective-corrected top-down image of a laboratory well plate.
+This is a perspective-corrected flat top-down view of an Opentrons OT-2 deck. \
+The deck contains multiple labware items arranged in a 3×3 slot grid.
 
-Identify the tight bounding rectangle that encloses the entire well plate area \
-(all wells, including the outermost wells and their edges).
+Identify the WELL PLATE labware that contains circular wells arranged in a grid \
+(it may be a 96-well, 24-well, or 12-well plate). Return the tight bounding \
+rectangle around ONLY that well plate — not the whole deck, not any other labware.
 
-Return pixel coordinates measured in THIS image (the corrected image you are \
-looking at). Do NOT apply or reference any transformation coefficients.
+Return pixel coordinates measured in THIS corrected image. Do NOT reference any \
+transformation or use coordinates from the original raw image.
 
 Return ONLY valid JSON, no explanation:
 {
   "crop_box": [x1, y1, x2, y2]
 }
 
-x1, y1 = top-left pixel of the well plate region in this image.
-x2, y2 = bottom-right pixel of the well plate region in this image.
+x1, y1 = top-left pixel of the well plate in this corrected image.
+x2, y2 = bottom-right pixel of the well plate in this corrected image.
 """
 
 VLM_CALIBRATE_ROI_PROMPT = """\
-This is a cropped top-down image of a laboratory well plate (only the plate area is visible).
+This is a cropped top-down image of a single laboratory well plate \
+(only the plate area is visible, not the surrounding deck).
 
 Analyse the image and return:
 1. roi_size — [width, height] in pixels of a single well ROI patch. \
@@ -319,28 +332,40 @@ def calibrate_camera(
     vlm_api_key: str | None = None,
     corrected_save_path: str | None = None,
     cropped_save_path: str | None = None,
+    plate_description: str | None = None,
 ) -> CameraParams:
     """
-    Detect plate corners, wellplate crop box, and ROI parameters from a reference image.
+    Detect deck corners, perspective-correct the full deck image, locate the
+    target wellplate, and extract ROI parameters.
 
     Call this ONCE before the experiment loop starts.
     The returned CameraParams are reused for every iteration.
     Re-call only if the camera shifts or the plate is repositioned.
 
     Steps:
-        1. Qwen3 VL detects plate corners from the raw image.
-        2. PIL applies perspective correction using the detected corners.
-        3. Qwen3 VL detects the wellplate crop bounding box from the corrected image.
-        4. PIL crops to the wellplate area.
-        5. Qwen3 VL infers roi_size and stride from the cropped wellplate image.
+        1. VLM detects the four outer corners of the OT-2 DECK PLATFORM from
+           the raw image (not the wellplate — the whole deck). These are used
+           to compute a perspective transform that produces a flat top-down view
+           of the entire deck.
+        2. PIL applies perspective correction to the raw image → flat deck image.
+        3. VLM receives the corrected deck image and locates the target wellplate
+           (the labware with circular wells). Returns crop_box in corrected
+           image pixels.
+        4. PIL crops the corrected image to the wellplate area.
+        5. VLM detects ROI patch size and well stride from the cropped image.
 
     Args:
-        reference_image_path: Path to a representative image taken after the
-                               initial mixes are dispensed (whole wellplate visible).
+        reference_image_path: Path to a reference image captured after the
+                               initial mixes are dispensed, showing the whole
+                               OT-2 deck with the wellplate visible.
         vlm_model: OpenRouter model identifier.
         vlm_api_key: OpenRouter API key (optional, falls back to env var).
-        corrected_save_path: Optional path to save the perspective-corrected image.
+        corrected_save_path: Optional path to save the perspective-corrected
+                             full deck image.
         cropped_save_path: Optional path to save the cropped wellplate image.
+        plate_description: Optional hint for the VLM when locating the wellplate
+                           (e.g. "96-well plate in slot 5", "24-well plate").
+                           If None, the VLM uses visual features to identify it.
 
     Returns:
         CameraParams ready to pass into run_level1() for all iterations.
@@ -348,12 +373,15 @@ def calibrate_camera(
     base, ext = os.path.splitext(reference_image_path)
     ext = ext or ".jpg"
 
-    # Step 1: VLM detects plate corners from the raw image
+    # Step 1: VLM detects the OT-2 deck platform corners from the raw image.
+    # Using deck corners (not individual labware) gives a stable reference for
+    # full-deck perspective correction.
     raw_pil = Image.open(reference_image_path).convert("RGB")
     corners_resp = _vlm_call(reference_image_path, VLM_CALIBRATE_CORNERS_PROMPT, vlm_model, vlm_api_key)
     plate_corners = corners_resp["plate_corners"]
 
-    # Step 2: Apply perspective correction (crop_box placeholder — not used yet)
+    # Step 2: Apply perspective correction — flattens the tilted camera view
+    # into a straight top-down view of the entire deck.
     temp_params = CameraParams(
         plate_corners=plate_corners,
         crop_box=[0, 0, 0, 0],
@@ -367,17 +395,23 @@ def calibrate_camera(
         corrected_save_path = f"{base}_calibrated{ext}"
     corrected_pil.save(corrected_save_path)
 
-    # Step 3: VLM detects wellplate crop box from the corrected image
-    crop_resp = _vlm_call(corrected_save_path, VLM_CALIBRATE_CROP_PROMPT, vlm_model, vlm_api_key)
-    crop_box = crop_resp["crop_box"]  # [x1, y1, x2, y2]
+    # Step 3: VLM receives the corrected flat deck image and locates the
+    # target wellplate. Optionally inject a plate_description hint.
+    crop_prompt = VLM_CALIBRATE_CROP_PROMPT
+    if plate_description:
+        crop_prompt = (
+            f"The target well plate is: {plate_description}.\n\n" + crop_prompt
+        )
+    crop_resp = _vlm_call(corrected_save_path, crop_prompt, vlm_model, vlm_api_key)
+    crop_box = crop_resp["crop_box"]  # [x1, y1, x2, y2] in corrected image pixels
 
-    # Step 4: Crop corrected image to wellplate area
+    # Step 4: Crop the corrected deck image to the wellplate area only.
     cropped_pil = corrected_pil.crop(tuple(crop_box))
     if cropped_save_path is None:
         cropped_save_path = f"{base}_calibrated_cropped{ext}"
     cropped_pil.save(cropped_save_path)
 
-    # Step 5: VLM infers ROI patch size and well stride from the cropped wellplate image
+    # Step 5: VLM detects ROI patch size and well stride from the cropped image.
     roi_resp = _vlm_call(cropped_save_path, VLM_CALIBRATE_ROI_PROMPT, vlm_model, vlm_api_key)
     roi_w, roi_h = roi_resp["roi_size"]
     stride_x, stride_y = roi_resp["stride"]

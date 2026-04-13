@@ -66,16 +66,31 @@ Use a consistent lighting setup and fixed camera position. If the camera is phys
 
 ## Step 1 — Perspective Correction (VLM once → cached coefficients)
 
-**First time only**: The VLM receives the raw captured image and identifies the four corners of the wellplate. These corners are used to compute 8 perspective transformation coefficients via `find_coeffs()`.
+The overhead camera captures the entire OT-2 deck at a slight angle, producing a
+perspective-distorted image. The goal of this step is to flatten the **full deck**
+into a straight top-down view before any labware-specific processing begins.
 
-**VLM task**: Detect plate corners → `[[x1,y1],[x2,y2],[x3,y3],[x4,y4]]` ordered TL, TR, BR, BL.
+**First time only**: The VLM receives the raw camera image and identifies the four
+outer corners of the **OT-2 deck platform** (the large flat rectangular surface
+that holds all labware). These corners — not any individual labware corners — are
+used to compute the perspective correction coefficients.
 
-**Output**: `plate_corners` stored in `CameraParams`. Coefficients are re-derived from corners each call via `find_coeffs()` + PIL `Image.PERSPECTIVE`.
+> Using deck corners rather than individual labware corners produces a more reliable
+> and stable correction because the deck boundary is always visible and clearly
+> defined even when multiple labware items are present.
 
-**Every iteration (no VLM)**: Apply stored corners → compute coefficients → apply `PIL Image.PERSPECTIVE` transform → flat, straight top-down view of the plate.
+**VLM task**: Detect the four outer corners of the OT-2 deck platform →
+`[[x1,y1],[x2,y2],[x3,y3],[x4,y4]]` ordered TL, TR, BR, BL.
+
+**Output**: `plate_corners` (deck corners) stored in `CameraParams`. Coefficients
+are re-derived from corners each call via `find_coeffs()` + PIL `Image.PERSPECTIVE`.
+
+**Every iteration (no VLM)**: Apply stored corners → compute coefficients →
+apply `PIL Image.PERSPECTIVE` transform → flat, straight top-down view of the
+entire deck.
 
 ```
-Raw image (tilted/angled)  →  find_coeffs(corners)  →  PIL PERSPECTIVE  →  Corrected image
+Raw image (tilted, full deck)  →  find_coeffs(deck corners)  →  PIL PERSPECTIVE  →  Flat deck image
 ```
 
 ---
@@ -83,24 +98,26 @@ Raw image (tilted/angled)  →  find_coeffs(corners)  →  PIL PERSPECTIVE  → 
 ## Step 2 — Crop Area of Interest (VLM once → cached crop box)
 
 **First time only**:
-1. The perspective correction coefficients derived from the corners detected in Step 1 are applied to the **raw image**, producing the perspective-corrected image.
-2. The VLM receives this corrected image and visually identifies the wellplate region, returning its bounding box as pixel coordinates within the corrected image.
+1. The perspective correction coefficients derived from the deck corners (Step 1) are applied to the **raw image**, producing a flat top-down view of the entire deck.
+2. The VLM receives this corrected flat deck image and visually locates the target wellplate (the labware with circular wells arranged in a grid) among all labware items on the deck. It returns the wellplate's bounding box in corrected image pixels.
 
-**VLM input**: The perspective-corrected image (flat top-down view produced from the raw image using Step 1 corners).
+**VLM input**: The flat corrected deck image (full deck, all labware visible).
 
-**VLM task**: Detect the wellplate region and return its bounding box in corrected image pixels:
+**VLM task**: Identify the well plate labware and return its bounding box in corrected image pixels:
 ```json
 {"crop_box": [x1, y1, x2, y2]}
 ```
-The box must tightly enclose the entire plate including all outermost wells. Coordinates are pixel positions in the corrected image.
+The box must tightly enclose only the target wellplate including all outermost wells — not the whole deck, and not any other labware item. Coordinates are pixel positions in the corrected image.
+
+**Optional hint**: Pass `plate_description` to `calibrate_camera()` (e.g. `"96-well plate in deck slot 5"`) to help the VLM identify the correct labware when multiple similar items are visible.
 
 **Output**: `crop_box` stored in `CameraParams`.
 
 **Every iteration (no VLM)**: Apply the stored perspective correction coefficients (from `plate_corners`) to the raw image, then apply the stored `crop_box` to the corrected result — no VLM call.
 
 ```
-Raw image  →  perspective correction (stored coefficients)  →  Corrected image
-Corrected image  →  crop(stored crop_box)  →  Cropped wellplate image (plate only)
+Raw image  →  perspective correction (stored deck-corner coefficients)  →  Flat deck image
+Flat deck image  →  crop(stored crop_box)  →  Cropped wellplate image (plate only)
 ```
 
 ---
@@ -148,10 +165,10 @@ Call `calibrate_camera()` before starting the experiment loop, using the image c
 
 | Sub-step | Tool | Input | Output |
 |---|---|---|---|
-| 1 | VLM (`qwen/qwen3-vl-235b-a22b-instruct`) | Raw camera image | `plate_corners` [TL, TR, BR, BL] |
-| 2 | `find_coeffs()` + PIL `Image.PERSPECTIVE` | Raw image + corners | Corrected image |
-| 3 | VLM (`qwen/qwen3-vl-235b-a22b-instruct`) | Corrected image | `crop_box` [x1, y1, x2, y2] |
-| 4 | `image.crop(crop_box)` | Corrected image | Cropped wellplate image |
+| 1 | VLM (`qwen/qwen3-vl-235b-a22b-instruct`) | Raw angled camera image | `plate_corners` — four outer corners of the OT-2 **deck platform** |
+| 2 | `find_coeffs()` + PIL `Image.PERSPECTIVE` | Raw image + deck corners | Flat corrected image of the full deck |
+| 3 | VLM (`qwen/qwen3-vl-235b-a22b-instruct`) | Flat corrected deck image | `crop_box` [x1, y1, x2, y2] — bounding box of the target wellplate |
+| 4 | `image.crop(crop_box)` | Flat corrected deck image | Cropped wellplate image |
 | 5 | VLM (`qwen/qwen3-vl-235b-a22b-instruct`) | Cropped wellplate image | `roi_w`, `roi_h`, `stride_x`, `stride_y` |
 
 All values are stored in a single `CameraParams` object.
