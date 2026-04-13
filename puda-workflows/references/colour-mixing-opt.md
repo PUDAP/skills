@@ -74,38 +74,58 @@ Mix 3: R_vol = ?, G_vol = ?, B_vol = ?
 Validate each set before generating the protocol — reject and re-ask if any set does not sum to `total_volume` (±1 µL tolerance).
 
 **Step 2 — Initial mixes (`x_init`)**
-Generate a protocol using the 3 user-provided volume combinations and execute it on the Opentrons.
+Generate a single protocol that dispenses all 3 initial volume combinations into 3 separate wells (e.g. A1, A2, A3) and execute it on the Opentrons. Record which well received which `(R_vol, G_vol, B_vol)` set.
 
-**Step 3 — Capture image**
-After dispensing each mix, use `camera_capture`. Save and name images as:
+**Step 3 — Capture whole-wellplate image**
+After the protocol completes (all 3 mixes dispensed), use `camera_capture` **once** to capture the entire wellplate showing the whole wellplate with 3 mixed colours. Save the image as:
 ```
 Base-colour-RGB-exp-<N>.jpg
 ```
 `<N>` increments from 1 for each iteration.
 
+> **Important**: Capture ONE image per iteration after ALL mixes for that iteration are dispensed — not one image per mix.
+
+**Step 3a — Camera calibration (first iteration only)**
+Before the iteration loop starts, call `calibrate_camera()` on the captured image. The steps run in this exact order:
+1. VLM receives the **raw image** → detects plate corners → returns `plate_corners`
+2. Apply perspective correction coefficients (derived from `plate_corners`) to the raw image → flat corrected image
+3. VLM receives the **corrected image** → detects wellplate bounding box → returns `crop_box` in corrected image pixels
+4. Crop the corrected image using `crop_box` → cropped wellplate image (plate only)
+5. VLM receives the **cropped image** → detects ROI patch size and well stride → returns `roi_w`, `roi_h`, `stride_x`, `stride_y`
+
+All values are cached in `CameraParams` and reused for every subsequent iteration without further VLM calls. See [image-processing.md](image-processing.md) for details.
+
 ---
 
 ### Phase 2 — Per-Iteration Loop
 
-**Step 4 — Image crop and pre-processing (VLM)**
-Pass the captured image to a VLM. See [image-processing.md](image-processing.md) for prompts.
+**Step 4 — Perspective correction and crop**
+Using cached `CameraParams` (no VLM):
+1. Apply stored perspective correction coefficients (from `plate_corners`) to the raw captured image → flat corrected image
+2. Apply stored `crop_box` to the corrected image → cropped wellplate image (plate only)
 
-**Step 5 — ROI extraction (VLM)**
-Use the VLM to identify and extract the Region of Interest for each well. Return per-well pixel crops.
+See [image-processing.md](image-processing.md).
 
-**Step 6 — RGB extraction**
-Compute mean RGB of each ROI crop — this is `(R_mix, G_mix, B_mix)`.
+**Step 5 — ROI extraction for all wells**
+Slide the cached ROI window across the cropped wellplate image to extract one patch per well, in row-major order (left to right, top to bottom). This covers every well on the plate regardless of whether it has a mix or is empty.
+
+**Step 6 — RGB extraction from active wells**
+Compute the mean RGB for each extracted ROI patch. Then select the RGB values for the wells that contain the mixes (by well index, derived from the protocol's well assignments):
+- Well index for A1 → `(R_mix_1, G_mix_1, B_mix_1)`
+- Well index for A2 → `(R_mix_2, G_mix_2, B_mix_2)`
+- Well index for A3 → `(R_mix_3, G_mix_3, B_mix_3)`
 
 **Step 7 — RMSE calculation**
+Compute RMSE for each well that received a mix:
 ```
 RMSE = sqrt(((R_mix - R_target)² + (G_mix - G_target)² + (B_mix - B_target)²) / 3)
 ```
-Use [../scripts/rmse.py](../scripts/rmse.py).
+Use [../scripts/rmse.py](../scripts/rmse.py). For the 3 initial mixes this produces `RMSE_1`, `RMSE_2`, `RMSE_3`.
 
 **Step 8 — Optimizer feedback**
-Pass `(volume_ratios, RMSE)` pairs to the chosen optimizer:
-- **BO**: update the surrogate model with the new observation
-- **LLM**: provide full history of `(ratios, RGB, RMSE)` and request next suggestion
+Pass all `(volume_ratios, RMSE)` pairs (one per active well) to the chosen optimizer:
+- **BO**: seed the surrogate model with all 3 initial `(ratio, RMSE)` observations
+- **LLM**: provide the full list of `(ratios, RGB, RMSE)` for all 3 initial mixes and request the next suggestion
 
 **Step 9 — New volume ratio suggestion**
 The optimizer returns the next `(R_vol, G_vol, B_vol)` to try.
@@ -119,14 +139,19 @@ Append one block to `logs/colour-mixing-report.md` after every iteration:
 | Field | Value |
 |---|---|
 | Iteration | <N> |
-| Volume ratio (R, G, B) | (<R_vol> µL, <G_vol> µL, <B_vol> µL) |
-| Mixed colour RGB | (<R_mix>, <G_mix>, <B_mix>) |
-| Target colour RGB | (<R_target>, <G_target>, <B_target>) |
-| RMSE | <value> |
 | Image saved | Base-colour-RGB-exp-<N>.jpg |
+| Target colour RGB | (<R_target>, <G_target>, <B_target>) |
 | Next suggested ratio (R, G, B) | (<R_next> µL, <G_next> µL, <B_next> µL) |
 | Stop condition reached | Yes / No |
+
+### Wells processed this iteration
+
+| Well | Volume ratio (R, G, B µL) | Mixed colour RGB | RMSE |
+|---|---|---|---|
+| <well_id> | (<R_vol>, <G_vol>, <B_vol>) | (<R_mix>, <G_mix>, <B_mix>) | <value> |
 ```
+
+For the 3 initial mixes the "Wells processed" table will have 3 rows (one per initial mix well). For subsequent iterations it will have 1 row (the single new mix well).
 
 **Step 11 — Generate and execute protocol**
 Use **puda-protocol** to generate a new protocol with the suggested volumes and execute it on the Opentrons. Then repeat from Step 3.
