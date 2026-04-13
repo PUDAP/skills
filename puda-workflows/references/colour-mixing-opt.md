@@ -87,22 +87,24 @@ Base-colour-RGB-exp-<N>.jpg
 
 **Step 3a — Camera calibration (first iteration only)**
 Before the iteration loop starts, call `calibrate_camera()` on the captured image. The steps run in this exact order:
-1. VLM receives the **raw image** → detects plate corners → returns `plate_corners`
-2. Apply perspective correction coefficients (derived from `plate_corners`) to the raw image → flat corrected image
-3. VLM receives the **corrected image** → detects wellplate bounding box → returns `crop_box` in corrected image pixels
-4. Crop the corrected image using `crop_box` → cropped wellplate image (plate only)
-5. VLM receives the **cropped image** → detects ROI patch size and well stride → returns `roi_w`, `roi_h`, `stride_x`, `stride_y`
+1. VLM receives the **full raw deck image** → locates the wellplate → returns `raw_crop_box` (bounding box in raw image pixels)
+2. Crop the raw image using `raw_crop_box` → wellplate raw crop (still angled)
+3. VLM receives the **wellplate raw crop** → detects the four wellplate corners within the crop → returns `plate_corners`
+4. Apply perspective correction to the crop using `plate_corners` → flat wellplate image
+5. VLM receives the **flat wellplate image** → detects ROI patch size and well stride → returns `roi_w`, `roi_h`, `stride_x`, `stride_y`
 
 All values are cached in `CameraParams` and reused for every subsequent iteration without further VLM calls. See [image-processing.md](image-processing.md) for details.
+
+> **Why crop first?** Attempting to correct the full deck image requires all four outer deck corners to be visible — in practice they are often cut off by the camera frame or the robot arm, causing a distorted black-area result. Cropping the wellplate region first ensures all four plate corners are always visible and the correction is reliable.
 
 ---
 
 ### Phase 2 — Per-Iteration Loop
 
-**Step 4 — Perspective correction and crop**
+**Step 4 — Crop and perspective correction**
 Using cached `CameraParams` (no VLM):
-1. Apply stored perspective correction coefficients (from `plate_corners`) to the raw captured image → flat corrected image
-2. Apply stored `crop_box` to the corrected image → cropped wellplate image (plate only)
+1. Crop the raw captured image using stored `raw_crop_box` → wellplate raw crop
+2. Apply stored perspective correction (from `plate_corners`) to the crop → flat wellplate image
 
 See [image-processing.md](image-processing.md).
 
