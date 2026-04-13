@@ -25,9 +25,10 @@ Ask the user which approach to use if not specified:
 
 | Approach | Class | When to use |
 |---|---|---|
-| **Bayesian LCB** | `BayesianLCBOptimizer` | Good default; balanced exploration vs exploitation |
-| **Bayesian EI** | `BayesianEIOptimizer` | Better when observations are noisy or iteration budget is tight |
-| **LLM** | `LLMOptimizer` | When interpretability or natural-language reasoning is preferred |
+| **Bayesian LCB (SO)** | `ViscositySOBOOptimizerLCB` | Good default; one scalar objective (e.g. abs error) |
+| **Bayesian EI (SO)** | `ViscositySOBOOptimizerEI` | Noisy observations or tight iteration budget |
+| **LLM (single objective)** | `ViscosityLLMSingleObjectiveOptimizer` (alias `ViscosityLLMOptimizer`) | One primary metric; volume-tuning prompt when optimising `volume` alone |
+| **LLM (multi-objective)** | `ViscosityLLMMultiObjectiveOptimizer` | Several competing objectives per iteration; trade-offs in prompt |
 ---
 
 ## Workflow
@@ -163,7 +164,7 @@ Positive signed error = over-transfer. Negative = under-transfer.
 
 **Step 7 — Update optimizer**
 
-Pass `(current_params, absolute_error)` to the optimizer's `.update()` method.
+For Bayesian SOBO in [`scripts/optimizers.py`](../scripts/optimizers.py), call ``observe(params, signed_error_ul, absolute_error_ul=...)`` (``absolute_error_ul`` defaults to ``|signed_error_ul|``). The surrogate uses signed error (EI: fit on ``-(signed_error_ul²)`` toward zero error; LCB: fit on absolute error with ``UpperConfidenceBound(..., maximize=False)``).
 
 **Step 8 — Save iteration report**
 

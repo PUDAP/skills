@@ -151,7 +151,7 @@ Before use:
 
 ### Opentrons Machine (`machine_id: "opentrons"`)
 
-Use for **automated liquid handling, protocol generation, and camera image capture on the Opentrons OT-2 robot**.
+Use for **automated liquid handling and full protocol generation on the Opentrons OT-2 robot**.
 
 Capabilities:
 - Full protocol code generation via `Protocol.to_python_code()` — produces valid runnable OT-2 Python
@@ -161,22 +161,21 @@ Capabilities:
 - Flow control: `flow_rate`, `air_gap`, `blow_out`, `touch_tip`, `move_to`
 - Protocol utilities: `delay`, `comment`, `home`
 - CSV-driven loops: `read_csv_file` + `loop` for data-driven protocols
-- Custom labware: AMDM mass balance vials (30 mL, 50 mL) loaded inline via `load_labware_from_definition`
+- Custom labware support: AMDM mass balance vials (30 mL, 50 mL) loaded inline
 - All gen2 pipette types: p10, p20, p300, p1000 (single and multi-channel)
-- Camera image capture: `capture_image` command via attached USB camera (Linux, V4L2, optional)
+- **External camera image capture**: `camera_capture` — triggers the external camera mounted above the deck to capture and save a still image of the wellplate
 
 Use this machine when:
 - The user references an Opentrons OT-2 robot
 - The task involves generating a complete OT-2 protocol or individual liquid handling commands
 - The user mentions Opentrons labware (tip racks, well plates, reservoirs, NEST, Corning, mass balance vials)
 - The workflow requires data-driven dispensing from a CSV file
-- The user asks to capture an image during or after a liquid handling workflow
+- The workflow requires capturing a camera image of the wellplate after dispensing steps
 
 Before command generation:
 - Refer to: [opentrons-machine](references/opentrons-machine.md)
 - Run `puda machine commands opentrons` to understand available commands
-- Follow all command types, params, sequencing rules, labware constraints, and camera rules in `references/opentrons-machine.md`
-- **Always ask the user for the deck slot (`location`) of each labware — never assume or assign a default slot**
+- Follow all command types, params, sequencing rules, and labware constraints in `references/opentrons-machine.md`
 
 
 ## Selection Workflow

@@ -1,141 +1,229 @@
 ---
 name: colour-mixing-image-processing
-description: Three-level image processing pipeline for colour mixing experiments. CameraParams (plate corners, ROI size, stride) are detected by Qwen3 VL 32B Instruct once at calibration and cached for all iterations. PIL Image.PERSPECTIVE handles perspective correction — no OpenCV required.
+description: Five-step image processing pipeline for colour mixing experiments. VLM (Qwen3-235B) runs once at calibration to detect plate corners, wellplate crop box, and ROI parameters; all values are cached and reused every iteration without further VLM calls.
 ---
 
 # Image Processing
 
 **Script**: [../scripts/image_processing.py](../scripts/image_processing.py)  
 **Dependencies**: `pip install numpy Pillow openai`  
-**VLM model**: `qwen/qwen3-vl-32b-instruct` via OpenRouter (default)
+**VLM model**: `qwen/qwen3-vl-235b-a22b-instruct` via OpenRouter
 
 ---
 
 ## Design
 
-Camera calibration happens **once** before the experiment loop. The VLM detects plate corners and ROI parameters from a reference image. Those values are stored in a `CameraParams` object and reused for every iteration — **no VLM call is made per iteration**.
+Calibration runs **once** before the experiment loop — triggered on the first image captured after the initial 3 mixes are dispensed. The VLM produces three cached values:
 
-VLM re-detection only triggers automatically when Level 2 validation keeps failing across retries, indicating the camera may have shifted.
+1. **Plate corners** (detected on the raw image) — used for perspective correction
+2. **Crop box coordinates** — bounding rectangle of the wellplate in the corrected image
+3. **ROI patch size and stride** — detected from the cropped plate image
+
+All values are stored in `CameraParams` and reused for every iteration — **no VLM call is made per iteration**.
 
 ```
-Before loop:  calibrate_camera(reference_image) → CameraParams
-                                                        ↓
-Each iteration:  run_pipeline(image, params)  ← no VLM, uses cache
-                                                        ↓
-               If validation fails repeatedly: recalibrate → new CameraParams
+Before loop:  calibrate_camera(reference_image)   ← image of whole wellplate after initial mixes
+                    │
+                    ├── Step 1: VLM → plate_corners (from raw image)
+                    ├── Step 2: Apply perspective correction → flat corrected image
+                    ├── Step 3: VLM → crop_box (wellplate bounding box in corrected image)
+                    ├── Step 4: Crop corrected image to wellplate area
+                    └── Step 5: VLM → roi_size, stride (from cropped image)  → CameraParams (cached)
+                                                                                      │
+Each iteration:  run_pipeline(image, params)  ◄── no VLM, uses cache ────────────────┘
+                    │
+                    ├── Step 1: Apply perspective correction (plate_corners)
+                    ├── Step 2: Crop to wellplate area (crop_box)
+                    ├── Step 3: Sliding window ROI extraction — ALL wells (roi_w, roi_h, stride)
+                    └── Step 4: Mean RGB per well → rgb_values[well_index]
 ```
+
+VLM re-detection only triggers automatically when Level 2 validation keeps failing, indicating the camera may have shifted.
 
 ---
 
 ## Camera Capture
 
-Images are captured by an **external camera**. Save each image as:
+Images are captured by the Opentrons edge camera (`camera_capture` command). One image is captured **per iteration** after all mixes for that iteration are dispensed — never one image per mix. Save each image as:
 ```
 Base-colour-RGB-exp-<N>.jpg
 ```
 
-Use a consistent lighting setup. If the camera is physically moved, re-run `calibrate_camera()`.
+Use a consistent lighting setup and fixed camera position. If the camera is physically moved, re-run `calibrate_camera()`.
 
 ---
 
-## Step 0 — Calibration (once per session)
+## `CameraParams` — Cached Calibration Values
 
-Call `calibrate_camera()` before starting the experiment loop.
-
-**Flow**:
-
-| Step | Tool | Output |
+| Field | Set by | Description |
 |---|---|---|
-| 1. Detect plate corners | Qwen3 VL 32B (`VLM_CALIBRATE_CORNERS_PROMPT`) on reference image | `plate_corners` [TL, TR, BR, BL] |
-| 2. Apply perspective correction | `find_coeffs()` + PIL `Image.PERSPECTIVE` | Corrected reference image |
-| 3. Save corrected image | `<reference>_calibrated.jpg` | Input for ROI inference |
-| 4. Infer ROI parameters | Qwen3 VL 32B (`VLM_CALIBRATE_ROI_PROMPT`) on corrected image | `roi_w`, `roi_h`, `stride_x`, `stride_y` |
-
-All four values are stored in a `CameraParams` dataclass.
-
-**`CameraParams` fields**:
-
-| Field | Description |
-|---|---|
-| `plate_corners` | 4 plate corner coordinates [TL, TR, BR, BL] in raw image pixels |
-| `roi_w`, `roi_h` | Well ROI patch size in pixels |
-| `stride_x`, `stride_y` | Step between adjacent well centres in pixels |
-| `output_size` *(derived)* | Output image size computed from corner distances |
-| `reference_rect` *(derived)* | Flat destination rectangle for `find_coeffs()` |
-
-**Entry point**: `calibrate_camera()` in `image_processing.py`
+| `plate_corners` | Step 1 VLM | Four plate corners [TL, TR, BR, BL] detected from the raw image — used to compute perspective coefficients |
+| `crop_box` | Step 3 VLM | `[x1, y1, x2, y2]` bounding box of the wellplate in the corrected image — isolates the plate before ROI extraction |
+| `roi_w`, `roi_h` | Step 5 VLM | ROI patch size in pixels, detected from the cropped plate image; **must be smaller than the well diameter** |
+| `stride_x`, `stride_y` | Step 5 VLM | Step between adjacent well centres in pixels, detected from the cropped plate image |
 
 ---
 
-## Step 4 — Three-Level Processing Pipeline (per iteration)
+## Step 1 — Perspective Correction (VLM once → cached coefficients)
 
-### Level 1 — Apply Cached Params (No VLM)
+**First time only**: The VLM receives the raw captured image and identifies the four corners of the wellplate. These corners are used to compute 8 perspective transformation coefficients via `find_coeffs()`.
 
-| Step | Tool | Output |
+**VLM task**: Detect plate corners → `[[x1,y1],[x2,y2],[x3,y3],[x4,y4]]` ordered TL, TR, BR, BL.
+
+**Output**: `plate_corners` stored in `CameraParams`. Coefficients are re-derived from corners each call via `find_coeffs()` + PIL `Image.PERSPECTIVE`.
+
+**Every iteration (no VLM)**: Apply stored corners → compute coefficients → apply `PIL Image.PERSPECTIVE` transform → flat, straight top-down view of the plate.
+
+```
+Raw image (tilted/angled)  →  find_coeffs(corners)  →  PIL PERSPECTIVE  →  Corrected image
+```
+
+---
+
+## Step 2 — Crop Area of Interest (VLM once → cached crop box)
+
+**First time only**:
+1. The perspective correction coefficients derived from the corners detected in Step 1 are applied to the **raw image**, producing the perspective-corrected image.
+2. The VLM receives this corrected image and visually identifies the wellplate region, returning its bounding box as pixel coordinates within the corrected image.
+
+**VLM input**: The perspective-corrected image (flat top-down view produced from the raw image using Step 1 corners).
+
+**VLM task**: Detect the wellplate region and return its bounding box in corrected image pixels:
+```json
+{"crop_box": [x1, y1, x2, y2]}
+```
+The box must tightly enclose the entire plate including all outermost wells. Coordinates are pixel positions in the corrected image.
+
+**Output**: `crop_box` stored in `CameraParams`.
+
+**Every iteration (no VLM)**: Apply the stored perspective correction coefficients (from `plate_corners`) to the raw image, then apply the stored `crop_box` to the corrected result — no VLM call.
+
+```
+Raw image  →  perspective correction (stored coefficients)  →  Corrected image
+Corrected image  →  crop(stored crop_box)  →  Cropped wellplate image (plate only)
+```
+
+---
+
+## Step 3 — ROI Extraction for All Wells (VLM once → cached patch size and stride)
+
+Slide a window across the **cropped wellplate image** to extract one ROI patch per well, covering the **entire plate** in row-major order (left to right, top to bottom).
+
+**First time only**: The VLM receives the cropped wellplate image and detects well positions. It returns the ROI patch size (`roi_w`, `roi_h`) and the step between well centres (`stride_x`, `stride_y`). These are stored in `CameraParams` and reused for all future iterations — **no VLM call per iteration**.
+
+**VLM task**: Detect well layout → `{"roi_size": [roi_w, roi_h], "stride": [stride_x, stride_y]}` in cropped image pixels.
+
+**ROI size rule**: The ROI must be **smaller than the well size** so it captures only the interior colour and avoids well edges. Centre the ROI at each well position.
+
+**Every iteration (no VLM)**:
+- Starting from the top-left well, step by cached `stride_x` / `stride_y` to reach each well centre
+- At each well, extract a patch of cached size `roi_w × roi_h` centred on that position
+- Patches are collected in row-major order for the **whole plate** (all wells)
+
+```
+Cropped wellplate image  →  sliding window (roi_w < well_w, roi_h < well_h)  →  [patch_well1, ..., patch_wellN]
+                                                                                        (one patch per well, all wells)
+```
+
+**Entry point**: `extract_roi_patches(image, roi_w, roi_h, stride_x, stride_y)`
+
+---
+
+## Step 4 — RGB Extraction
+
+Compute the mean RGB value of each ROI patch.
+
+- Input: list of ROI patches for all wells (NumPy arrays, shape `H × W × 3`, RGB)
+- Output: `[(R1, G1, B1), (R2, G2, B2), ..., (RN, GN, BN)]` — one tuple per well, values 0–255, in row-major order
+
+The caller selects specific well indices (from the protocol's well assignments) to read the RGB values for the wells that contain mixed colours.
+
+**Entry point**: `mean_rgb(patch)` applied to each patch from Step 3.
+
+---
+
+## Calibration Flow (once per session)
+
+Call `calibrate_camera()` before starting the experiment loop, using the image captured after the initial 3 mixes are dispensed.
+
+| Sub-step | Tool | Input | Output |
+|---|---|---|---|
+| 1 | VLM (`qwen/qwen3-vl-235b-a22b-instruct`) | Raw camera image | `plate_corners` [TL, TR, BR, BL] |
+| 2 | `find_coeffs()` + PIL `Image.PERSPECTIVE` | Raw image + corners | Corrected image |
+| 3 | VLM (`qwen/qwen3-vl-235b-a22b-instruct`) | Corrected image | `crop_box` [x1, y1, x2, y2] |
+| 4 | `image.crop(crop_box)` | Corrected image | Cropped wellplate image |
+| 5 | VLM (`qwen/qwen3-vl-235b-a22b-instruct`) | Cropped wellplate image | `roi_w`, `roi_h`, `stride_x`, `stride_y` |
+
+All values are stored in a single `CameraParams` object.
+
+**Entry point**: `calibrate_camera(reference_image_path, vlm_model="qwen/qwen3-vl-235b-a22b-instruct")`
+
+---
+
+## Per-Iteration Pipeline (no VLM)
+
+Call `run_pipeline()` each iteration. It returns `(rgb_values, params)`. If re-calibration occurred, the returned `params` is new and must replace the old one.
+
+```python
+# Before the experiment loop — use the image captured after the initial 3 mixes
+params = calibrate_camera("Base-colour-RGB-exp-1.jpg", vlm_model="qwen/qwen3-vl-235b-a22b-instruct")
+
+# Each iteration — image shows the whole wellplate
+rgb_values, params = run_pipeline(
+    image_path="Base-colour-RGB-exp-1.jpg",
+    params=params,
+    expected_well_count=96,   # total wells on the plate (e.g. 96 for a 96-well plate)
+)
+
+# Select RGB for the specific wells that have mixes (by well index in row-major order)
+# e.g. well A1 = index 0, A2 = index 1, A3 = index 2 for a 96-well plate
+rgb_well_A1 = rgb_values[0]
+rgb_well_A2 = rgb_values[1]
+rgb_well_A3 = rgb_values[2]
+```
+
+### Level 1 — Apply Cached Params (no VLM)
+
+| Step | Action | Output |
 |---|---|---|
-| 1. Load image | PIL | Raw image |
-| 2. Perspective correction | `find_coeffs()` + PIL `Image.PERSPECTIVE` using cached `plate_corners` | Flat top-down plate image |
-| 3. Save corrected image | `<image>_corrected.jpg` | Audit record |
-| 4. Extract ROI patches | Sliding window using cached `roi_w`, `roi_h`, `stride_x`, `stride_y` | Per-well patches |
-| 5. Compute mean RGB | NumPy mean per patch | `(R, G, B)` per well |
+| 1 | Load raw image | PIL Image |
+| 2 | Apply stored perspective correction coefficients (from `plate_corners`) to raw image | Flat corrected image |
+| 3 | Apply stored `crop_box` to corrected image | Wellplate-only image |
+| 4 | Extract ROI patches via sliding window for ALL wells | Per-well patches (whole plate) |
+| 5 | Compute mean RGB per patch | `[(R,G,B), …]` — one per well |
 
-**Entry point**: `run_level1(image_path, params)` in `image_processing.py`
+**Entry point**: `run_level1(image_path, params)`
 
 ### Level 2 — Validation
 
 | Check | Condition | Action if failed |
 |---|---|---|
-| RGB range | All R, G, B values in 0–255 | Escalate to Level 3 |
-| Patch count | Matches expected well count | Escalate to Level 3 |
+| RGB range | All R, G, B in 0–255 | Escalate to Level 3 |
+| Patch count | Matches `expected_well_count` (total plate wells) | Escalate to Level 3 |
 | Patch variance | Non-zero variance per patch (not blank/black) | Escalate to Level 3 |
-| Colour spread | At least one channel differs by > 10 across wells | Warn; optionally escalate |
+| Colour spread | At least one channel differs by > 10 across wells with mixes | Warn; optionally escalate |
 
-**Entry point**: `validate_results()` in `image_processing.py`
+**Entry point**: `validate_results(patches, rgb_values, expected_well_count)`
 
 ### Level 3 — Fallback
 
-**Step 1 — Retry Level 1**  
-Re-run `run_level1()` with the same cached params. Transient image noise may have caused the failure.
+**Step 1 — Retry Level 1**: Re-run with same cached params. Transient noise may have caused the failure.
 
-**Step 2 — VLM re-calibration (camera shifted)**  
-Call `recalibrate_and_run()`. This re-runs the full `calibrate_camera()` flow on the current image and returns a **new `CameraParams`**. The caller must store the new params for all future iterations.
+**Step 2 — VLM re-calibration**: Call `recalibrate_and_run()` — re-runs the full `calibrate_camera()` flow on the current image and returns a **new `CameraParams`**. The caller must store the new params for all future iterations.
 
-**Entry point**: `recalibrate_and_run()` in `image_processing.py`
-
----
-
-## Full Pipeline
-
-Call `run_pipeline()` each iteration. It returns `(rgb_values, params)` — if re-calibration occurred, the returned `params` is new and must replace the old one.
-
-```python
-# Before the experiment loop
-params = calibrate_camera("reference.jpg", vlm_model="qwen/qwen3-vl-32b-instruct")
-
-# Each iteration
-rgb_values, params = run_pipeline(
-    image_path="Base-colour-RGB-exp-1.jpg",
-    params=params,
-    expected_well_count=3,
-)
-```
-
-**Inputs to `run_pipeline()`**:
-
-| Argument | Source | Description |
-|---|---|---|
-| `image_path` | External camera | Path to the captured image |
-| `params` | `calibrate_camera()` or previous `run_pipeline()` | Cached `CameraParams` |
-| `expected_well_count` | Labware definition | e.g. `3` for x_init mixes |
-| `vlm_model` | Default or user choice | OpenRouter model ID |
-| `vlm_api_key` | Environment / user | OpenRouter API key (or `OPENROUTER_API_KEY` env var) |
+**Entry point**: `recalibrate_and_run(image_path, expected_well_count, vlm_model="qwen/qwen3-vl-235b-a22b-instruct")`
 
 ---
 
 ## Rules
 
 - Always run `calibrate_camera()` before the experiment loop — never skip it.
-- If the camera is physically moved or adjusted, re-run `calibrate_camera()` manually.
+- Use the image captured **after all initial mixes are dispensed** as the calibration reference image.
+- VLM is called **only during calibration** — never inside the iteration loop.
+- ROI size (`roi_w × roi_h`) must always be **smaller than the well size** — never equal or larger.
+- ROI patches must be **centred** on each well position.
+- ROI extraction covers the **entire wellplate** — all wells, not just the active ones. The caller filters by well index.
 - Always store the `params` returned by `run_pipeline()` — it may be updated after re-calibration.
-- Save all raw images, corrected images, and the calibration reference image for every session.
+- If the camera is physically moved or adjusted, re-run `calibrate_camera()` manually.
+- Save all raw, corrected, and cropped images for every session.
 - If all three pipeline levels fail — stop, save the raw image, and report to the user.

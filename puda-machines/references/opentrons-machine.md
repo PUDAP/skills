@@ -34,6 +34,36 @@ Each Opentrons command follows the standard protocol command structure (see prot
 
 - `machine_id`: Must be `"opentrons"` (string)
 
+## Camera Capture Command
+
+Use `camera_capture` to take a still image with the external camera mounted above the OT-2 deck.
+
+### Command
+
+```json
+{
+  "machine_id": "opentrons",
+  "name": "camera_capture",
+  "params": {
+    "filename": "Base-colour-RGB-exp-1.jpg"
+  }
+}
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `filename` | string | Yes | File name (including extension) under which the captured image is saved. Use `.jpg` or `.png`. |
+
+### Rules
+
+- Capture **one image per iteration** — after all dispense steps for that iteration are complete, not during or between individual dispenses.
+- The pipette arm must not be obstructing the wellplate view when `camera_capture` is called. Ensure the robot has moved to a clear position (e.g. home or a safe park position) before capturing.
+- Image names must follow the convention agreed in the workflow (e.g. `Base-colour-RGB-exp-<N>.jpg` for colour mixing experiments).
+- `camera_capture` does **not** require a tip to be attached or detached — it is independent of the pipette state.
+- `camera_capture` can appear at any point after `home` and all `load_labware` / `load_instrument` commands.
+
 ## Rules and Restrictions
 
 The following rules **must** be strictly followed when generating Opentrons commands:
@@ -68,40 +98,6 @@ The following rules **must** be strictly followed when generating Opentrons comm
 | `p1000_single_gen2` | up to 1000 µL | single |
 | `p1000_multi_gen2` | up to 1000 µL | 8 |
 
-### Camera Capture
-
-The opentrons edge service supports an attached USB camera via the `capture_image` command. Camera support is **optional** — the command is only available when `CAMERA_DEVICE` is set in the edge `.env`.
-
-**Edge `.env` variables:**
-- `CAMERA_DEVICE`: Device index (e.g. `0`) or path (e.g. `/dev/video0`). Overrides `camera_index` at connect time. Leave unset to run without a camera.
-- `CAMERA_RESOLUTION`: Resolution as `WIDTHxHEIGHT` (e.g. `1280x720`). Omit to use camera default.
-- `CAMERA_CAPTURES_FOLDER`: Folder for saved images. Defaults to `captures` (relative to edge CWD).
-
-**Command:**
-```json
-{
-  "step_number": 1,
-  "name": "capture_image",
-  "machine_id": "opentrons",
-  "params": {
-    "filename": "well_A1_capture.jpg"
-  }
-}
-```
-
-**Parameters:**
-- `filename` (string, optional): Filename for the saved image. Auto-generates `capture_YYYYMMDD_HHMMSS.jpg` if omitted. `.jpg` appended if no extension given. Relative paths resolve inside `captures_folder`.
-
-**Response:**
-- `path` (string): Path of the saved image — `captures_folder/filename`, relative to edge CWD unless `CAMERA_CAPTURES_FOLDER` is set to an absolute path.
-- `saved` (bool): `True` if the file exists after capture.
-
-**Restrictions:**
-- `capture_image` must be its own protocol — do **not** mix it with `load_labware` or pipetting commands in the same protocol.
-- Camera capture uses the V4L2 backend and is **Linux-only**.
-- If no camera is configured, `capture_image` raises `RuntimeError` on the edge.
-- Image format is always JPEG (`.jpg`).
-
 ### Custom Labware
 
 - `mass_balance_vial_30000` and `mass_balance_vial_50000` are custom labware.
@@ -118,11 +114,12 @@ The opentrons edge service supports an attached USB camera via the `capture_imag
 4. **`drop_tip`**: Must follow every `pick_up_tip`. Protocol must always end with no tip attached.
 5. **`aspirate`** / **`dispense`**: May only occur after a tip has been picked up.
 6. **`read_csv_file`** / **`read_csv`**: Must appear before the `loop` that uses its data.
+7. **`camera_capture`**: Must appear after `home`. Call it only after all dispense steps for the current iteration are complete and the pipette arm is clear of the wellplate.
 
 ## Instructions
 
 1. **Consult Resources**: Consult the resources listed in the "Required Resources" section above before generating any commands.
 
-2. **Verify sequencing and constraints**: **Always** verify that commands follow all rules in the "Rules and Restrictions" section, including: correct load order, `home` placement, `pick_up_tip` → pipetting → `drop_tip` sequencing so the protocol ends with no tip attached, valid deck slots, labware compatibility, volume constraints, and proper handling of missing information.
+2. **Verify sequencing and constraints**: **Always** verify that commands follow all rules in the "Rules and Restrictions" section, including: correct load order, `pick_up_tip` → pipetting → `drop_tip` sequencing so the protocol ends with no tip attached, valid deck slots, labware compatibility, volume constraints, and proper handling of missing information.
 
 3. **Generate command**: Create a command object with `machine_id: "opentrons"`, appropriate `name` and `params`.
