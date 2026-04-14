@@ -85,13 +85,13 @@ class ImageConfig:
 # Adjust plate_width/plate_height to control warp output resolution.
 # Hardcode crop_box manually if border artefacts appear after warping.
 DEFAULT_CONFIG = ImageConfig(
-    src_corners=[(293, 270), (394, 271), (394, 338), (293, 336)],
+    src_corners=(293, 268), (394, 268), (394, 338), (293, 336)(293, 270), (394, 271), (394, 338), (293, 336)],
     dst_corners=[(0, 0), (600, 0), (600, 400), (0, 400)],
     plate_width=600,
     plate_height=400,
     col_num=12,    # columns 1–12, left → right
     row_num=8,     # rows A–H, top → bottom
-    offset_array=[[16, 16], [16, 16]],
+    offset_array=[[25, 25], [25, 25]],
     crop_box=(208, 207, 399, 302), # user hardcodes (x1, y1, x2, y2) here if trimming is needed
 )
 
