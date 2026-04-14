@@ -1,220 +1,207 @@
 ---
 name: colour-mixing-image-processing
-description: Five-step image processing pipeline for colour mixing experiments. Crops the wellplate from the raw deck image first, then perspective-corrects only the cropped region. VLM (Qwen3-235B) runs once at calibration; all values are cached and reused every iteration without further VLM calls.
+description: Deterministic image processing pipeline using OpenCV homography warp, grid-based ROI slicing, and per-well RGB extraction. No VLM required. Calibrate once with ImageConfig; reuse for every captured image.
 ---
 
 # Image Processing
 
 **Script**: [../scripts/image_processing.py](../scripts/image_processing.py)  
-**Dependencies**: `pip install numpy Pillow openai`  
-**VLM model**: `qwen/qwen3-vl-235b-a22b-instruct` via OpenRouter
+**Dependencies**: `pip install numpy Pillow opencv-python`
 
 ---
 
-## Design — Why Crop First, Then Correct
+## Design
 
-The overhead camera captures the entire OT-2 deck at a slight angle. Attempting to perspective-correct the full deck image requires all four outer deck corners to be visible — but in practice one or more corners are frequently cut off by the camera frame or obscured by the robot arm. This causes the perspective transform to produce a distorted image with large black areas.
-
-**Solution**: Locate and crop the wellplate from the raw image first, then perspective-correct only that small, focused crop. The four wellplate corners are always fully visible within the crop, making the correction reliable.
+The camera is in a fixed position. All geometry is calibrated once in `ImageConfig` and reused for every image. No VLM or runtime detection is needed.
 
 ```
-Before loop:  calibrate_camera(reference_image)   ← full raw deck image
-                    │
-                    ├── Step 1: VLM → raw_crop_box (wellplate location in raw image)
-                    ├── Step 2: Crop raw image to wellplate region
-                    ├── Step 3: VLM → plate_corners (wellplate corners within the crop)
-                    ├── Step 4: Perspective-correct the crop → flat wellplate image
-                    └── Step 5: VLM → roi_size, stride    → CameraParams (cached)
-                                                                  │
-Each iteration:  run_pipeline(image, params)  ◄── no VLM ────────┘
-                    │
-                    ├── Step 1: Crop raw image using stored raw_crop_box
-                    ├── Step 2: Apply perspective correction (stored plate_corners)
-                    ├── Step 3: Sliding window ROI extraction — ALL wells
-                    └── Step 4: Mean RGB per well → rgb_values[well_index]
+run_pipeline(image_path, well_ids, config)
+    │
+    ├── Step 1  compute_homography(src_corners → plate rectangle)  →  H (3×3 matrix)
+    ├── Step 2  cv2.warpPerspective(raw, H, output_size)           →  flat plate image
+    ├── Step 3  get_grid_dimensions(plate, 12, 8)                  →  cell_w, cell_h
+    ├── Step 4  slice_roi_patches(plate, 12, 8, offset_array)      →  96 ROI patches
+    ├── Step 5  save_roi_debug_image(...)                          →  <name>_roi_debug.jpg
+    └── Step 6  extract_well_rgb(patches, well_ids)                →  {well_id: (R,G,B)}
 ```
 
-VLM re-detection only triggers automatically when Level 2 validation keeps failing, indicating the camera may have shifted.
+**Well orientation** — standard 96-well plate:
+
+```
+       col 1   col 2  …  col 12
+row A   A1      A2         A12     ← top-left to top-right
+row B   B1      B2         B12
+ …
+row H   H1      H2         H12     ← bottom-left to bottom-right
+```
 
 ---
 
-## Camera Capture
+## `ImageConfig` — Calibrated Parameters
 
-Images are captured by the Opentrons edge camera (`camera_capture` command). One image of the **full deck** is captured **per iteration** after all mixes for that iteration are dispensed — never one image per mix. Save each image as:
-```
-Base-colour-RGB-exp-<N>.jpg
-```
-
-The pipette arm must be in a clear position (home or park) so the wellplate is unobstructed.
-
----
-
-## `CameraParams` — Cached Calibration Values
-
-| Field | Set by | Description |
+| Field | Type | Description |
 |---|---|---|
-| `raw_crop_box` | Step 1 VLM | `[x1, y1, x2, y2]` bounding box of the wellplate in the **raw** image — used to crop the wellplate region each iteration |
-| `plate_corners` | Step 3 VLM | Four corners [TL, TR, BR, BL] of the wellplate **within the raw crop** — used to compute the perspective correction coefficients |
-| `roi_w`, `roi_h` | Step 5 VLM | ROI patch size in pixels, detected from the flat corrected image; **must be smaller than the well diameter** |
-| `stride_x`, `stride_y` | Step 5 VLM | Step between adjacent well centres in pixels, detected from the flat corrected image |
+| `src_corners` | `list[(x,y)]` × 4 | Wellplate corners in the **raw** image [TL, TR, BR, BL]. Measure from the actual photo. |
+| `plate_width` | int | Width in pixels of the warped plate output. |
+| `plate_height` | int | Height in pixels of the warped plate output. |
+| `col_num` | int | Grid columns — `12` for plate columns 1–12 (left → right). |
+| `row_num` | int | Grid rows — `8` for plate rows A–H (top → bottom). |
+| `offset_array` | `[[xl,xr],[yt,yb]]` | Pixel inset per grid cell — keeps ROI inside the well, away from the rim. |
 
----
+`dst_corners` and `output_size` are **auto-derived** properties:
+- `dst_corners = [(0,0),(plate_width,0),(plate_width,plate_height),(0,plate_height)]`
+- `output_size = (plate_width, plate_height)`
 
-## Step 1 — Locate Wellplate in Raw Image (VLM once → cached raw_crop_box)
-
-**First time only**: The VLM receives the full raw deck image and identifies the bounding box of the target wellplate (the labware with a grid of circular wells). The box is stored and used every iteration to crop the wellplate region from the raw image before any perspective correction is applied.
-
-**VLM input**: Full raw camera image of the OT-2 deck (angled/tilted view).
-
-**VLM task**: Find the wellplate and return its bounding box in raw image pixels:
-```json
-{"raw_crop_box": [x1, y1, x2, y2]}
-```
-
-**Output**: `raw_crop_box` stored in `CameraParams`. Add ~20 px padding so the plate edges are fully included.
-
-**Every iteration (no VLM)**: `raw_pil.crop(raw_crop_box)` → wellplate raw crop.
-
----
-
-## Step 2 — Detect Wellplate Corners in Crop (VLM once → cached plate_corners)
-
-**First time only**: The VLM receives the raw crop (which still appears slightly angled) and identifies the four corners of the wellplate surface. These corners are used to compute the perspective correction coefficients.
-
-**VLM input**: Raw crop of the wellplate region (still angled/in perspective).
-
-**VLM task**: Detect the wellplate's four outer corners within the crop:
-```json
-{"plate_corners": [[x1,y1],[x2,y2],[x3,y3],[x4,y4]]}
-```
-Ordered: top-left, top-right, bottom-right, bottom-left. Use the outer plate frame edges, not well positions.
-
-**Output**: `plate_corners` stored in `CameraParams` (coordinates are within the crop, not the full raw image).
-
-**Every iteration (no VLM)**: Apply stored corners → compute coefficients → `PIL Image.PERSPECTIVE` on the crop → flat wellplate image.
-
-```
-Raw crop (angled wellplate)  →  find_coeffs(plate_corners)  →  PIL PERSPECTIVE  →  Flat wellplate image
-```
-
----
-
-## Step 3 — ROI Extraction for All Wells (VLM once → cached patch size and stride)
-
-**First time only**: The VLM receives the flat corrected wellplate image and detects the well layout. It returns the ROI patch size and centre-to-centre stride. These are stored and reused for all future iterations.
-
-**VLM input**: Flat top-down wellplate image (output of perspective correction).
-
-**VLM task**: Detect well layout:
-```json
-{"roi_size": [roi_w, roi_h], "stride": [stride_x, stride_y]}
-```
-
-**ROI size rule**: Must be **smaller than the well diameter** — captures only the interior colour, not the well edge.
-
-**Every iteration (no VLM)**: Slide the cached window across the flat image → one patch per well in row-major order (all wells, left to right, top to bottom).
-
-```
-Flat wellplate image  →  sliding window (roi_w, roi_h, stride_x, stride_y)  →  [patch_well1, ..., patch_wellN]
-```
-
-**Entry point**: `extract_roi_patches(image, roi_w, roi_h, stride_x, stride_y)`
-
----
-
-## Step 4 — RGB Extraction
-
-Compute the mean RGB of each ROI patch.
-
-- Input: list of ROI patches for all wells (NumPy arrays, `H × W × 3`, RGB)
-- Output: `[(R1,G1,B1), ..., (RN,GN,BN)]` — one tuple per well, values 0–255, row-major order
-
-The caller selects specific well indices (from the protocol's well assignments) to read RGB for active (dispensed) wells.
-
-**Entry point**: `mean_rgb(patch)` applied to each patch.
-
----
-
-## Calibration Flow (once per session)
-
-Call `calibrate_camera()` before starting the experiment loop, using the image captured after the initial 3 mixes are dispensed.
-
-| Sub-step | Tool | Input | Output |
-|---|---|---|---|
-| 1 | VLM (`qwen/qwen3-vl-235b-a22b-instruct`) | Full raw deck image | `raw_crop_box` [x1, y1, x2, y2] |
-| 2 | `PIL Image.crop(raw_crop_box)` | Raw image | Wellplate raw crop (still angled) |
-| 3 | VLM (`qwen/qwen3-vl-235b-a22b-instruct`) | Wellplate raw crop | `plate_corners` [TL, TR, BR, BL] |
-| 4 | `find_coeffs()` + PIL `Image.PERSPECTIVE` | Raw crop + plate_corners | Flat wellplate image |
-| 5 | VLM (`qwen/qwen3-vl-235b-a22b-instruct`) | Flat wellplate image | `roi_w`, `roi_h`, `stride_x`, `stride_y` |
-
-**Entry point**: `calibrate_camera(reference_image_path, vlm_model="qwen/qwen3-vl-235b-a22b-instruct")`
-
-Optional: pass `plate_description` (e.g. `"black 96-well plate in slot 9"`) to help the VLM identify the correct labware when multiple similar items are visible.
-
----
-
-## Per-Iteration Pipeline (no VLM)
+### Default Calibration (`DEFAULT_CONFIG`)
 
 ```python
-# Before the experiment loop — image taken after the initial 3 mixes
-params = calibrate_camera(
-    "Base-colour-RGB-exp-1.jpg",
-    vlm_model="qwen/qwen3-vl-235b-a22b-instruct",
-    plate_description="black 96-well plate in slot 9",  # optional hint
+DEFAULT_CONFIG = ImageConfig(
+    src_corners=[(814, 20), (1615, 0), (1500, 820), (883, 790)],
+    plate_width=1520,
+    plate_height=1460,
+    col_num=12,    # columns 1–12, left → right
+    row_num=8,     # rows A–H, top → bottom
+    offset_array=[[22, 22], [14, 14]],
 )
-
-# Each iteration — full raw deck image
-rgb_values, params = run_pipeline(
-    image_path="Base-colour-RGB-exp-1.jpg",
-    params=params,
-    expected_well_count=96,  # total wells on the plate
-)
-
-# Select RGB for the specific wells that received mixes (row-major index)
-rgb_well_A1 = rgb_values[0]
-rgb_well_A2 = rgb_values[1]
-rgb_well_A3 = rgb_values[2]
 ```
 
-### Level 1 — Apply Cached Params (no VLM)
+---
 
-| Step | Action | Output |
+## Step 1 — Homography Matrix
+
+```
+src_corners (raw image)  →  compute_homography()  →  H (3×3 float64)
+```
+
+`cv2.findHomography(src, dst, cv2.RANSAC)` fits the best projective transform mapping the four raw plate corners to the flat `plate_width × plate_height` rectangle. RANSAC makes it robust to small localisation errors.
+
+Unlike an 8-coefficient approximation, a full homography matrix handles all projective distortions (rotation, shear, perspective tilt) correctly.
+
+---
+
+## Step 2 — Perspective Warp
+
+```
+raw image  →  cv2.warpPerspective(raw, H, output_size)  →  flat plate image
+```
+
+Every pixel in the output is back-projected through H to its source location in the raw image and interpolated with `cv2.INTER_CUBIC`. Result: a clean, upright, undistorted view of the wellplate exactly `plate_width × plate_height` pixels.
+
+Saved as `<name>_warped.jpg`.
+
+---
+
+## Step 3 — Grid Dimensions
+
+```python
+cell_w, cell_h = get_grid_dimensions(plate_np, col_num=12, row_num=8)
+# e.g. cell_w = 1520/12 ≈ 126.7 px,  cell_h = 1460/8 = 182.5 px
+```
+
+Divides the plate image dimensions by the grid counts to get the floating-point size of each well cell. Used by both `slice_roi_patches` and `crop_well`.
+
+---
+
+## Step 4 — ROI Grid Slicing
+
+```
+plate image  →  slice_roi_patches(plate, 12, 8, offset_array)  →  96 patches + 96 boxes
+```
+
+Each cell is shrunk inward by `offset_array` so the ROI sits inside the well and avoids the rim. Patches are in row-major order: A1, A2, …, A12, B1, …, H12.
+
+### Single-well crop
+
+`crop_well(plate_np, "B3", 12, 8, offset_array)` returns `(patch_array, (x1,y1,x2,y2))` for just that well, without slicing the whole grid.
+
+---
+
+## Step 5 — ROI Debug Image
+
+After slicing, `save_roi_debug_image()` draws a **red rectangle** at every ROI patch and labels it with:
+- **Well ID** (e.g. `A1`)
+- **Patch size** (e.g. `82×138`)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  A1 82×138  A2 82×138  A3 82×138  …  A12 82×138            │
+│  B1 82×138  B2 82×138  …                                    │
+│  …                                                          │
+│  H1 82×138  …          H12 82×138                           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+Saved as `<name>_roi_debug.jpg`.
+
+**When RGB results look wrong, inspect this image first.** Misaligned rectangles mean `src_corners`, `offset_array`, or `crop_box` need adjusting.
+
+---
+
+## Step 6 — RGB Extraction
+
+```python
+rgb_values = extract_well_rgb(patches, well_ids=["A1","A2","A3"], col_num=12)
+# → {"A1": (210, 45, 30), "A2": (30, 190, 55), "A3": (20, 40, 200)}
+```
+
+Uses **median** per channel to suppress outlier pixels (dust, reflections, bubbles).
+
+---
+
+## Usage
+
+```python
+from image_processing import run_pipeline, DEFAULT_CONFIG
+
+rgb_values = run_pipeline(
+    image_path="Base-colour-RGB-exp-1.jpg",
+    well_ids=["A1", "A2", "A3"],
+    config=DEFAULT_CONFIG,
+    # optional — auto-derived from image_path if omitted:
+    # warped_save_path="Base-colour-RGB-exp-1_warped.jpg",
+    # roi_debug_save_path="Base-colour-RGB-exp-1_roi_debug.jpg",
+)
+# → {"A1": (210, 45, 30), "A2": (30, 190, 55), "A3": (20, 40, 200)}
+```
+
+### Saved files per run
+
+| File | Description |
+|---|---|
+| `<name>_warped.jpg` | Homography-corrected flat plate image |
+| `<name>_roi_debug.jpg` | Red ROI rectangles + well ID + `W×H` label at every well |
+
+### Re-calibrating `src_corners`
+
+Open the raw camera photo in any image viewer. Hover over each physical corner of the wellplate and read the `(x, y)` pixel coordinates:
+
+```
+src_corners = [
+    (x_TL, y_TL),   # top-left  corner of the plate
+    (x_TR, y_TR),   # top-right
+    (x_BR, y_BR),   # bottom-right
+    (x_BL, y_BL),   # bottom-left
+]
+```
+
+`plate_width` and `plate_height` set the output resolution — increase them for higher-resolution ROI patches.
+
+---
+
+## Validation
+
+`validate_results(rgb_values)` checks:
+
+| Check | Condition | Failure action |
 |---|---|---|
-| 1 | Load full raw image | PIL Image |
-| 2 | Crop to wellplate using stored `raw_crop_box` | Wellplate raw crop (angled) |
-| 3 | Apply perspective correction using stored `plate_corners` | Flat wellplate image |
-| 4 | Extract ROI patches via sliding window for ALL wells | Per-well patches |
-| 5 | Compute mean RGB per patch | `[(R,G,B), …]` — one per well |
-
-**Entry point**: `run_level1(image_path, params)`
-
-### Level 2 — Validation
-
-| Check | Condition | Action if failed |
-|---|---|---|
-| RGB range | All R, G, B in 0–255 | Escalate to Level 3 |
-| Patch count | Matches `expected_well_count` | Escalate to Level 3 |
-| Patch variance | Non-zero variance per patch (not blank) | Escalate to Level 3 |
-| Colour spread | At least one channel differs by > 10 across wells | Warn; optionally escalate |
-
-### Level 3 — Fallback
-
-**Step 1 — Retry Level 1**: Re-run with same cached params.
-
-**Step 2 — VLM re-calibration**: Call `recalibrate_and_run()` — re-runs the full `calibrate_camera()` flow and returns a **new `CameraParams`** that must replace the old one.
+| RGB range | All R, G, B in 0–255 | `RuntimeError` |
+| Colour spread | At least one channel varies by > 10 across active wells | `RuntimeError` — check dispense completed |
 
 ---
 
 ## Rules
 
-- Always run `calibrate_camera()` before the experiment loop — never skip it.
-- Use the image captured **after all initial mixes are dispensed** as the calibration reference.
-- The pipette arm must be clear of the wellplate when the image is captured.
-- VLM is called **only during calibration** — never inside the iteration loop.
-- `plate_corners` are coordinates **within the raw crop**, not the full raw image.
-- ROI size must always be **smaller than the well diameter**.
-- ROI extraction covers the **entire wellplate** — all wells, not just active ones. Filter by well index.
-- Always store the `params` returned by `run_pipeline()` — it may be updated after re-calibration.
-- If the camera is physically moved, re-run `calibrate_camera()`.
-- Save raw crops and corrected images every session for debugging.
-- If all three pipeline levels fail — stop, save the raw image, and report to the user.
+- Recalibrate `src_corners` whenever the camera is physically moved or refocused.
+- Capture **one image per iteration** after all dispenses are complete and the pipette arm is clear.
+- `run_pipeline()` always saves the warped image and the ROI debug image every call.
+- Inspect `<name>_roi_debug.jpg` first when RGB results look wrong.
