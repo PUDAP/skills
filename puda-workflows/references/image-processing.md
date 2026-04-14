@@ -57,14 +57,14 @@ row H   H1      H2         H12     ← bottom-left to bottom-right
 
 ```python
 DEFAULT_CONFIG = ImageConfig(
-    src_corners=[(146, 72), (533, 74), (529, 426), (159, 422)],
+    src_corners=[(159, 92), (533, 74), (529, 426), (159, 422)],
     dst_corners=[(0, 0), (600, 0), (600, 400), (0, 400)],
     plate_width=600,
     plate_height=400,
     col_num=12,    # columns 1–12, left → right
     row_num=8,     # rows A–H, top → bottom
     offset_array=[[8, 8], [8, 8]],
-    crop_box=(220, 240, 470, 430), # user-hardcoded crop in warped-image pixels
+    crop_box=(208, 207, 399, 302), # user-hardcoded crop in warped-image pixels
 )
 ```
 
