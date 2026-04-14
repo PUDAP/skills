@@ -63,7 +63,7 @@ DEFAULT_CONFIG = ImageConfig(
     plate_height=400,
     col_num=12,    # columns 1–12, left → right
     row_num=8,     # rows A–H, top → bottom
-    offset_array=[[8, 8], [8, 8]],
+    offset_array=[[12, 12], [12, 12]],
     crop_box=(208, 207, 399, 302), # user-hardcoded crop in warped-image pixels
 )
 ```
@@ -71,7 +71,7 @@ DEFAULT_CONFIG = ImageConfig(
 Current default crop:
 
 ```python
-crop_box = (220, 240, 470, 430)
+crop_box = (208, 207, 399, 302)
 ```
 
 ---
@@ -197,7 +197,7 @@ src_corners = [
 `DEFAULT_CONFIG` currently uses this hardcoded crop in warped-image pixel coordinates:
 
 ```python
-crop_box = (220, 240, 470, 430)
+crop_box = (208, 207, 399, 302)
 ```
 
 Change this manually in `ImageConfig` if your camera position or framing changes. The pipeline does not estimate it automatically.

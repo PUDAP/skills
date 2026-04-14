@@ -73,6 +73,20 @@ Mix 3: R_vol = ?, G_vol = ?, B_vol = ?
 
 Validate each set before generating the protocol — reject and re-ask if any set does not sum to `total_volume` (±1 µL tolerance).
 
+**Step 1a — User confirmation before execution**
+After all inputs have been collected and validated, present a single summary back to the user and ask for explicit confirmation before generating or executing any protocol.
+
+The confirmation summary must include:
+- Target colour
+- Total well volume
+- R / G / B source deck slots
+- All 3 `x_init` volume combinations
+- Optimization approach
+- RMSE threshold
+- Maximum iterations
+
+Do not generate the initial protocol until the user confirms that the full setup is correct.
+
 **Step 2 — Initial mixes (`x_init`)**
 Generate a single protocol that dispenses all 3 initial volume combinations into 3 separate wells (e.g. A1, A2, A3) and execute it on the Opentrons. Record which well received which `(R_vol, G_vol, B_vol)` set.
 
@@ -88,7 +102,7 @@ Base-colour-RGB-exp-<N>.jpg
 **Step 3a — Image processing (every iteration)**
 The image processing pipeline uses fixed, calibrated parameters — no VLM is needed. Call `run_pipeline()` on the captured image. The steps run in this exact order:
 1. Apply fixed perspective correction using calibrated `src_corners` and `dst_corners` → flat deck image
-2. Crop the corrected image using user-hardcoded `crop_box=(220, 240, 470, 430)` → cropped wellplate image
+2. Crop the corrected image using user-hardcoded `crop_box=(208, 207, 399, 302)` → cropped wellplate image
 3. Slice the cropped image into a `row_num × col_num` ROI grid (one patch per well)
 4. Compute median RGB for each requested well by `well_id`
 
@@ -170,6 +184,8 @@ On stop: generate a final summary report and save to `logs/`.
 
 - Always ask for target colour, RMSE threshold, and max iterations **before** starting.
 - Always collect **three separate deck slots** for R, G, and B dye source labware before any `load_labware` for those sources; never use one slot for all three.
+- Always ask the user for explicit confirmation after all required inputs are collected and validated, before the first protocol is generated or executed.
+- Always ask the user for explicit confirmation before executing any later optimizer-suggested mix.
 - Never assume volume ratios — they must come from the optimizer at each iteration.
 - Image names must follow `Base-colour-RGB-exp-<N>.jpg` exactly.
 - Protocol must always end with no tip attached (Opentrons sequencing rule).
