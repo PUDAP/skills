@@ -91,7 +91,7 @@ DEFAULT_CONFIG = ImageConfig(
     plate_height=400,
     col_num=12,    # columns 1–12, left → right
     row_num=8,     # rows A–H, top → bottom
-    offset_array=[[, 16], [16, 16]],
+    offset_array=[[25, 25], [25, 25]],
     crop_box=(208, 207, 399, 302), # user hardcodes (x1, y1, x2, y2) here if trimming is needed
 )
 
