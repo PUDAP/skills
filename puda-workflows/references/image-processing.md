@@ -71,7 +71,7 @@ DEFAULT_CONFIG = ImageConfig(
 Current default crop:
 
 ```python
-crop_box = (220, 240, 470, 430)
+crop_box = (208, 207, 399, 302)
 ```
 
 ---
@@ -197,7 +197,7 @@ src_corners = [
 `DEFAULT_CONFIG` currently uses this hardcoded crop in warped-image pixel coordinates:
 
 ```python
-crop_box = (220, 240, 470, 430)
+crop_box = (208, 207, 399, 302)
 ```
 
 Change this manually in `ImageConfig` if your camera position or framing changes. The pipeline does not estimate it automatically.
