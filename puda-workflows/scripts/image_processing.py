@@ -52,13 +52,7 @@ class ImageConfig:
         plate_width:  Width in pixels of the warped output image.
         plate_height: Height in pixels of the warped output image.
 
-    User-defined crop (applied AFTER warp, before grid slicing):
-        crop_box:     Hardcoded (x1, y1, x2, y2) in warped-image pixels to
-                      isolate the wellplate from surrounding deck area.
-                      This is manually calibrated by the user and is never
-                      auto-detected. Set to None to skip cropping.
-
-    ROI grid (applied to the plate image, after optional crop):
+    ROI grid (applied to the warped plate image):
         col_num:      Columns in the grid. 12 for a 96-well plate (cols 1–12).
         row_num:      Rows in the grid. 8 for a 96-well plate (rows A–H).
         offset_array: [[x_pad_left, x_pad_right], [y_pad_top, y_pad_bottom]]
@@ -72,7 +66,6 @@ class ImageConfig:
     col_num: int
     row_num: int
     offset_array: list[list[int]]
-    crop_box: tuple[int, int, int, int] | None = None
 
     @property
     def output_size(self) -> tuple[int, int]:
@@ -83,7 +76,6 @@ class ImageConfig:
 # Default calibration for the standard OT-2 camera rig.
 # Adjust src_corners if the camera is repositioned.
 # Adjust plate_width/plate_height to control warp output resolution.
-# Hardcode crop_box manually if border artefacts appear after warping.
 DEFAULT_CONFIG = ImageConfig(
     src_corners=[(293, 271), (394, 271), (394, 338), (293, 338)],
     dst_corners=[(0, 0), (600, 0), (600, 400), (0, 400)],
@@ -91,8 +83,7 @@ DEFAULT_CONFIG = ImageConfig(
     plate_height=400,
     col_num=12,    # columns 1–12, left → right
     row_num=8,     # rows A–H, top → bottom
-    offset_array=[[30, 30], [30, 30]],
-    crop_box=(208, 207, 399, 302), # user hardcodes (x1, y1, x2, y2) here if trimming is needed
+    offset_array=[[24, 24], [24, 24]],
 )
 
 
@@ -125,34 +116,6 @@ def find_coeffs(
     A = np.array(matrix, dtype=np.float64)
     B = np.array(pb, dtype=np.float64).reshape(8)
     return np.linalg.solve(A, B).tolist()
-
-
-# ---------------------------------------------------------------------------
-# User-defined crop
-# ---------------------------------------------------------------------------
-
-def crop_to_wellplate(
-    plate_np: np.ndarray,
-    crop_box: tuple[int, int, int, int] | None,
-) -> np.ndarray:
-    """
-    Crop the warped plate image to the user-defined area of interest.
-
-    Applied after perspective correction to remove any remaining deck border.
-    The crop_box is a hardcoded calibration value supplied by the user.
-    If crop_box is None the full warped image is returned unchanged.
-
-    Args:
-        plate_np: Warped plate image as NumPy array (H, W, 3).
-        crop_box: (x1, y1, x2, y2) in warped-image pixels, or None to skip.
-
-    Returns:
-        Cropped NumPy array, or the original array if crop_box is None.
-    """
-    if crop_box is None:
-        return plate_np
-    x1, y1, x2, y2 = crop_box
-    return plate_np[y1:y2, x1:x2]
 
 
 # ---------------------------------------------------------------------------
@@ -517,7 +480,6 @@ def run_pipeline(
     well_ids: list[str],
     config: ImageConfig = DEFAULT_CONFIG,
     warped_save_path: str | None = None,
-    cropped_save_path: str | None = None,
     roi_debug_save_path: str | None = None,
 ) -> dict[str, tuple[int, int, int]]:
     """
@@ -526,16 +488,14 @@ def run_pipeline(
     Steps:
         1. Load raw image and compute perspective coefficients.
         2. Apply PIL Image.PERSPECTIVE → flat warped image.
-        3. Crop to wellplate area (config.crop_box) — skipped if None.
-        4. Compute grid cell dimensions from the plate image.
-        5. Slice grid into per-well ROI patches (all wells).
-        6. Save ROI debug overlay (red rectangles + well ID + W×H per cell).
-        7. Extract median RGB for each requested well_id.
-        8. Validate results.
+        3. Compute grid cell dimensions from the warped plate image.
+        4. Slice grid into per-well ROI patches (all wells).
+        5. Save ROI debug overlay (red rectangles + well ID per cell).
+        6. Extract median RGB for each requested well_id.
+        7. Validate results.
 
     Saved files (paths auto-derived from image_path if not supplied):
         <name>_warped.jpg     — full perspective-corrected image.
-        <name>_cropped.jpg    — wellplate crop (only when crop_box is set).
         <name>_roi_debug.jpg  — debug overlay with red ROI boxes and labels.
 
     Args:
@@ -543,7 +503,6 @@ def run_pipeline(
         well_ids:            Well IDs to extract RGB for, e.g. ["A1","A2","A3"].
         config:              ImageConfig. Defaults to DEFAULT_CONFIG.
         warped_save_path:    Optional path for the warped image.
-        cropped_save_path:   Optional path for the cropped wellplate image.
         roi_debug_save_path: Optional path for the ROI debug overlay.
 
     Returns:
@@ -572,21 +531,13 @@ def run_pipeline(
     ensure_parent_dir(warped_save_path)
     warped_pil.save(warped_save_path)
 
-    # Step 3: Optional crop to wellplate area
-    plate_np = crop_to_wellplate(warped_np, config.crop_box)
-
-    if config.crop_box is not None:
-        if cropped_save_path is None:
-            cropped_save_path = f"{base}_cropped{ext}"
-        ensure_parent_dir(cropped_save_path)
-        Image.fromarray(plate_np).save(cropped_save_path)
-
-    # Step 4 & 5: Grid dimensions + ROI slice
+    # Step 3 & 4: Grid dimensions + ROI slice on the warped image
+    plate_np = warped_np
     patches, roi_boxes = slice_roi_patches(
         plate_np, config.col_num, config.row_num, config.offset_array
     )
 
-    # Step 6: ROI debug overlay
+    # Step 5: ROI debug overlay
     if roi_debug_save_path is None:
         roi_debug_save_path = f"{base}_roi_debug{ext}"
     ensure_parent_dir(roi_debug_save_path)
@@ -594,10 +545,10 @@ def run_pipeline(
         plate_np, roi_boxes, roi_debug_save_path, config.col_num, config.row_num
     )
 
-    # Step 7: RGB extraction
+    # Step 6: RGB extraction
     rgb_values = extract_well_rgb(patches, well_ids, config.col_num)
 
-    # Step 8: Validate
+    # Step 7: Validate
     passed, failures = validate_results(rgb_values)
     if not passed:
         raise RuntimeError(

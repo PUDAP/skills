@@ -102,23 +102,22 @@ Base-colour-RGB-exp-<N>.jpg
 **Step 3a — Image processing (every iteration)**
 The image processing pipeline uses fixed, calibrated parameters — no VLM is needed. Call `run_pipeline()` on the captured image. The steps run in this exact order:
 1. Apply fixed perspective correction using calibrated `src_corners` and `dst_corners` → flat deck image
-2. Crop the corrected image using user-hardcoded `crop_box=(208, 207, 399, 302)` → cropped wellplate image
-3. Slice the cropped image into a `row_num × col_num` ROI grid (one patch per well)
-4. Compute median RGB for each requested well by `well_id`
+2. Slice the warped plate image into a `row_num × col_num` ROI grid (one patch per well)
+3. Compute median RGB for each requested well by `well_id`
 
-All parameters are stored in `DEFAULT_CONFIG` in `image_processing.py`. Re-calibrate only if the camera is physically moved. The crop box is manually hardcoded by the user, not auto-detected. See [image-processing.md](image-processing.md) for the full field reference.
+All parameters are stored in `DEFAULT_CONFIG` in `image_processing.py`. Re-calibrate only if the camera is physically moved. See [image-processing.md](image-processing.md) for the full field reference.
 
 ---
 
 ### Phase 2 — Per-Iteration Loop
 
 **Step 4 — Image processing**
-Call `run_pipeline(image_path, well_ids, config=DEFAULT_CONFIG)` on the captured image. The pipeline uses fixed calibrated parameters for perspective correction, the user-hardcoded crop box, and ROI slicing, so no VLM or re-calibration is required each iteration.
+Call `run_pipeline(image_path, well_ids, config=DEFAULT_CONFIG)` on the captured image. The pipeline uses fixed calibrated parameters for perspective correction and ROI slicing, so no VLM or re-calibration is required each iteration.
 
 See [image-processing.md](image-processing.md).
 
 **Step 5 — ROI extraction for all wells**
-Slice the cropped wellplate image into one ROI patch per well, in row-major order (left to right, top to bottom). This covers every well on the plate regardless of whether it has a mix or is empty.
+Slice the warped plate image into one ROI patch per well, in row-major order (left to right, top to bottom). This covers every well on the plate regardless of whether it has a mix or is empty.
 
 **Step 6 — RGB extraction from active wells**
 Compute the median RGB for each extracted ROI patch. Then select the RGB values for the wells that contain the mixes (by `well_id`, derived from the protocol's well assignments):
@@ -185,7 +184,6 @@ On stop: generate a final summary report and save to `logs/`.
 - Always ask for target colour, RMSE threshold, and max iterations **before** starting.
 - Always collect **three separate deck slots** for R, G, and B dye source labware before any `load_labware` for those sources; never use one slot for all three.
 - Always ask the user for explicit confirmation after all required inputs are collected and validated, before the first protocol is generated or executed.
-- Always ask the user for explicit confirmation before executing any later optimizer-suggested mix.
 - Never assume volume ratios — they must come from the optimizer at each iteration.
 - Image names must follow `Base-colour-RGB-exp-<N>.jpg` exactly.
 - Protocol must always end with no tip attached (Opentrons sequencing rule).
