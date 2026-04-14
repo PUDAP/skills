@@ -6,13 +6,12 @@ position above the OT-2 deck. All geometric parameters are calibrated once
 and stored in ImageConfig; every captured image uses the same values.
 
 Pipeline (applied to every captured image):
-    Step 1 — Compute homography matrix H from src_corners → plate rectangle.
-    Step 2 — Apply cv2.warpPerspective → flat, undistorted wellplate image.
-    Step 3 — Optional fine crop (crop_box) to trim any remaining border.
-    Step 4 — Compute grid cell dimensions from the plate image size.
-    Step 5 — Slice grid → one ROI patch per well (all 96 wells).
-    Step 6 — Save ROI debug overlay (red rectangles + W×H label at every well).
-    Step 7 — Crop and return median RGB for each requested well by ID.
+    Step 1 — Compute 8 perspective coefficients from src_corners → plate rectangle.
+    Step 2 — Apply PIL Image.PERSPECTIVE → flat, undistorted wellplate image.
+    Step 3 — Compute grid cell dimensions from the plate image size.
+    Step 4 — Slice grid → one ROI patch per well (all 96 wells).
+    Step 5 — Save ROI debug overlay (red rectangles + well ID + W×H label).
+    Step 6 — Extract median RGB for each requested well by ID.
 
 Standard 96-well plate orientation:
     - Columns 1–12 run left → right in the image.
@@ -20,7 +19,7 @@ Standard 96-well plate orientation:
     So well A1 is top-left and H12 is bottom-right.
 
 Dependencies:
-    pip install numpy Pillow opencv-python
+    pip install numpy Pillow
 """
 
 from __future__ import annotations
@@ -28,7 +27,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
@@ -44,17 +42,23 @@ class ImageConfig:
 
     Calibrate these values once for the physical rig; reuse for every image.
 
-    Homography:
+    Perspective correction:
         src_corners:  Four wellplate corners in the RAW image, ordered
                       [TL, TR, BR, BL], each as (x, y) in pixels.
                       Measure these from the raw captured photo.
-        plate_width:  Width in pixels of the desired warped plate output.
-        plate_height: Height in pixels of the desired warped plate output.
-                      The homography maps src_corners to the rectangle
-                      [(0,0), (plate_width,0), (plate_width,plate_height),
-                       (0,plate_height)].
+        dst_corners:  Corresponding destination rectangle in the OUTPUT image,
+                      ordered [TL, TR, BR, BL]. Typically starts at (0, 0)
+                      and spans the full plate_width × plate_height area.
+        plate_width:  Width in pixels of the warped output image.
+        plate_height: Height in pixels of the warped output image.
 
-    ROI grid (applied directly to the warped plate image):
+    User-defined crop (applied AFTER warp, before grid slicing):
+        crop_box:     Hardcoded (x1, y1, x2, y2) in warped-image pixels to
+                      isolate the wellplate from surrounding deck area.
+                      This is manually calibrated by the user and is never
+                      auto-detected. Set to None to skip cropping.
+
+    ROI grid (applied to the plate image, after optional crop):
         col_num:      Columns in the grid. 12 for a 96-well plate (cols 1–12).
         row_num:      Rows in the grid. 8 for a 96-well plate (rows A–H).
         offset_array: [[x_pad_left, x_pad_right], [y_pad_top, y_pad_bottom]]
@@ -62,115 +66,93 @@ class ImageConfig:
                       and away from the rim.
     """
     src_corners: list[tuple[int, int]]
+    dst_corners: list[tuple[int, int]]
     plate_width: int
     plate_height: int
     col_num: int
     row_num: int
     offset_array: list[list[int]]
-
-    @property
-    def dst_corners(self) -> list[tuple[int, int]]:
-        """Flat destination rectangle that src_corners map to after warping."""
-        return [
-            (0, 0),
-            (self.plate_width, 0),
-            (self.plate_width, self.plate_height),
-            (0, self.plate_height),
-        ]
+    crop_box: tuple[int, int, int, int] | None = None
 
     @property
     def output_size(self) -> tuple[int, int]:
-        """(width, height) passed to cv2.warpPerspective."""
+        """(width, height) of the PIL perspective transform output."""
         return (self.plate_width, self.plate_height)
 
 
 # Default calibration for the standard OT-2 camera rig.
 # Adjust src_corners if the camera is repositioned.
 # Adjust plate_width/plate_height to control warp output resolution.
-# Adjust crop_box if border artefacts appear after warping.
+# Hardcode crop_box manually if border artefacts appear after warping.
 DEFAULT_CONFIG = ImageConfig(
-    src_corners=[(90, 70), (560, 60), (600, 610), (80, 630)],
+    src_corners=[(245, 260), (420, 255), (455, 410), (230, 420)],
+    dst_corners=[(0, 0), (600, 0), (600, 400), (0, 400)],
     plate_width=600,
-    plate_height=800,
+    plate_height=400,
     col_num=12,    # columns 1–12, left → right
     row_num=8,     # rows A–H, top → bottom
     offset_array=[[8, 8], [8, 8]],
+    crop_box=(220, 240, 470, 430), # user hardcodes (x1, y1, x2, y2) here if trimming is needed
 )
 
 
 # ---------------------------------------------------------------------------
-# Homography and warp
+# Perspective correction (PIL-based)
 # ---------------------------------------------------------------------------
 
-def compute_homography(
-    src_corners: list[tuple[int, int]],
-    dst_corners: list[tuple[int, int]],
-) -> np.ndarray:
+def find_coeffs(
+    pa: list[tuple[int, int]],
+    pb: list[tuple[int, int]],
+) -> list[float]:
     """
-    Compute the 3×3 homography matrix H that maps src_corners to dst_corners.
+    Compute 8 perspective transformation coefficients for PIL Image.PERSPECTIVE.
 
-    Uses cv2.findHomography with RANSAC for robustness. The result is passed
-    to apply_warp().
+    Solves the 8×8 linear system that maps source points (pb, raw image) to
+    destination points (pa, flat output). Pass the result directly to
+    img.transform(..., Image.PERSPECTIVE, coeffs, Image.BICUBIC).
 
     Args:
-        src_corners: Four points in the RAW image [TL, TR, BR, BL].
-        dst_corners: Four corresponding points in the OUTPUT image.
+        pa: Four points in the OUTPUT image (destination rectangle).
+        pb: Four corresponding points in the INPUT image (wellplate corners).
 
     Returns:
-        3×3 float64 numpy array — the homography matrix H.
-
-    Raises:
-        RuntimeError: If OpenCV cannot compute a valid homography.
+        List of 8 floats for PIL img.transform().
     """
-    src = np.float32(src_corners)
-    dst = np.float32(dst_corners)
-    H, mask = cv2.findHomography(src, dst, cv2.RANSAC, ransacReprojThreshold=5.0)
-    if H is None:
-        raise RuntimeError(
-            "cv2.findHomography returned None. "
-            "Check that src_corners are correct and not collinear."
-        )
-    return H
+    matrix = []
+    for p1, p2 in zip(pa, pb):
+        matrix.append([p1[0], p1[1], 1, 0, 0, 0, -p2[0] * p1[0], -p2[0] * p1[1]])
+        matrix.append([0, 0, 0, p1[0], p1[1], 1, -p2[1] * p1[0], -p2[1] * p1[1]])
+    A = np.array(matrix, dtype=np.float64)
+    B = np.array(pb, dtype=np.float64).reshape(8)
+    return np.linalg.solve(A, B).tolist()
 
 
-def apply_warp(
-    image_np: np.ndarray,
-    H: np.ndarray,
-    output_size: tuple[int, int],
+# ---------------------------------------------------------------------------
+# User-defined crop
+# ---------------------------------------------------------------------------
+
+def crop_to_wellplate(
+    plate_np: np.ndarray,
+    crop_box: tuple[int, int, int, int] | None,
 ) -> np.ndarray:
     """
-    Apply homography H to image_np and produce a flat output image.
+    Crop the warped plate image to the user-defined area of interest.
+
+    Applied after perspective correction to remove any remaining deck border.
+    The crop_box is a hardcoded calibration value supplied by the user.
+    If crop_box is None the full warped image is returned unchanged.
 
     Args:
-        image_np:    Raw image as NumPy array (H, W, 3) in RGB.
-        H:           3×3 homography matrix from compute_homography().
-        output_size: (width, height) of the output image.
+        plate_np: Warped plate image as NumPy array (H, W, 3).
+        crop_box: (x1, y1, x2, y2) in warped-image pixels, or None to skip.
 
     Returns:
-        Warped image as NumPy array (height, width, 3) in RGB.
+        Cropped NumPy array, or the original array if crop_box is None.
     """
-    return cv2.warpPerspective(image_np, H, output_size, flags=cv2.INTER_CUBIC)
-
-
-def warp_image(
-    image_np: np.ndarray,
-    config: ImageConfig,
-) -> np.ndarray:
-    """
-    Convenience wrapper: compute homography and warp in one call.
-
-    Maps config.src_corners to config.dst_corners and produces a
-    config.plate_width × config.plate_height flat plate image.
-
-    Args:
-        image_np: Raw image as NumPy array (H, W, 3) in RGB.
-        config:   ImageConfig with src_corners and plate dimensions.
-
-    Returns:
-        Warped plate image as NumPy array (plate_height, plate_width, 3).
-    """
-    H = compute_homography(config.src_corners, config.dst_corners)
-    return apply_warp(image_np, H, config.output_size)
+    if crop_box is None:
+        return plate_np
+    x1, y1, x2, y2 = crop_box
+    return plate_np[y1:y2, x1:x2]
 
 
 # ---------------------------------------------------------------------------
@@ -199,6 +181,21 @@ def get_grid_dimensions(
     """
     h, w = plate_np.shape[:2]
     return w / col_num, h / row_num
+
+
+def _validate_roi_box(
+    x1: int,
+    y1: int,
+    x2: int,
+    y2: int,
+    well_label: str,
+) -> None:
+    """Fail fast when ROI padding would produce an empty or inverted crop."""
+    if x1 >= x2 or y1 >= y2:
+        raise ValueError(
+            f"Invalid ROI for {well_label}: box ({x1}, {y1}, {x2}, {y2}) is empty. "
+            "Check offset_array, crop_box, and output geometry."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -240,6 +237,8 @@ def slice_roi_patches(
             x2 = int(cell_w * (col + 1)) - x_pad_r
             y1 = int(cell_h * row) + y_pad_t
             y2 = int(cell_h * (row + 1)) - y_pad_b
+            well_id = f"{chr(ord('A') + row)}{col + 1}"
+            _validate_roi_box(x1, y1, x2, y2, well_id)
             patches.append(plate_np[y1:y2, x1:x2])
             roi_boxes.append((x1, y1, x2, y2))
 
@@ -276,7 +275,26 @@ def well_to_grid_pos(well_id: str) -> tuple[int, int]:
     return image_row, image_col
 
 
-def well_to_roi_index(well_id: str, col_num: int) -> int:
+def _validate_well_in_bounds(
+    well_id: str,
+    image_row: int,
+    image_col: int,
+    col_num: int,
+    row_num: int,
+) -> None:
+    """Validate that a parsed well lies within the configured plate grid."""
+    if not (0 <= image_row < row_num):
+        last_row = chr(ord("A") + row_num - 1)
+        raise ValueError(
+            f"Invalid well_id '{well_id}'. Row must be between A and {last_row}."
+        )
+    if not (0 <= image_col < col_num):
+        raise ValueError(
+            f"Invalid well_id '{well_id}'. Column must be between 1 and {col_num}."
+        )
+
+
+def well_to_roi_index(well_id: str, col_num: int, row_num: int = 8) -> int:
     """
     Convert a well identifier to its flat index in the patches list.
 
@@ -285,11 +303,13 @@ def well_to_roi_index(well_id: str, col_num: int) -> int:
     Args:
         well_id:  Well identifier, e.g. "A1", "B3", "H12".
         col_num:  Number of grid columns (12 for a 96-well plate).
+        row_num:  Number of grid rows (8 for a 96-well plate). Default: 8.
 
     Returns:
         Integer index into the patches list from slice_roi_patches().
     """
     image_row, image_col = well_to_grid_pos(well_id)
+    _validate_well_in_bounds(well_id, image_row, image_col, col_num, row_num)
     return image_row * col_num + image_col
 
 
@@ -319,6 +339,7 @@ def crop_well(
     """
     cell_w, cell_h = get_grid_dimensions(plate_np, col_num, row_num)
     image_row, image_col = well_to_grid_pos(well_id)
+    _validate_well_in_bounds(well_id, image_row, image_col, col_num, row_num)
 
     x_pad_l, x_pad_r = offset_array[0]
     y_pad_t, y_pad_b = offset_array[1]
@@ -327,6 +348,7 @@ def crop_well(
     x2 = int(cell_w * (image_col + 1)) - x_pad_r
     y1 = int(cell_h * image_row) + y_pad_t
     y2 = int(cell_h * (image_row + 1)) - y_pad_b
+    _validate_roi_box(x1, y1, x2, y2, well_id)
 
     return plate_np[y1:y2, x1:x2], (x1, y1, x2, y2)
 
@@ -362,7 +384,7 @@ def save_roi_debug_image(
     Returns:
         save_path, so the caller can log it.
     """
-    debug_pil = Image.fromarray(plate_np.astype(np.uint8), "RGB")
+    debug_pil = Image.fromarray(plate_np.astype(np.uint8))
     draw = ImageDraw.Draw(debug_pil)
 
     try:
@@ -425,7 +447,21 @@ def extract_well_rgb(
     Returns:
         Dict mapping each well_id to its (R, G, B) median tuple.
     """
-    return {wid: mean_rgb(patches[well_to_roi_index(wid, col_num)]) for wid in well_ids}
+    if col_num <= 0:
+        raise ValueError("col_num must be positive.")
+    if len(patches) % col_num != 0:
+        raise ValueError(
+            f"Expected patches length to be divisible by col_num, got "
+            f"{len(patches)} patches for {col_num} columns."
+        )
+
+    row_num = len(patches) // col_num
+    rgb_values: dict[str, tuple[int, int, int]] = {}
+    for wid in well_ids:
+        image_row, image_col = well_to_grid_pos(wid)
+        _validate_well_in_bounds(wid, image_row, image_col, col_num, row_num)
+        rgb_values[wid] = mean_rgb(patches[image_row * col_num + image_col])
+    return rgb_values
 
 
 # ---------------------------------------------------------------------------
@@ -457,7 +493,7 @@ def validate_results(
         if not (0 <= r <= 255 and 0 <= g <= 255 and 0 <= b <= 255):
             failures.append(f"Well {wid}: RGB ({r},{g},{b}) out of 0–255 range.")
 
-    if rgb_values:
+    if len(rgb_values) > 1:
         per_channel = list(zip(*rgb_values.values()))
         for ch in per_channel:
             if (max(ch) - min(ch)) >= min_colour_spread:
@@ -481,22 +517,25 @@ def run_pipeline(
     well_ids: list[str],
     config: ImageConfig = DEFAULT_CONFIG,
     warped_save_path: str | None = None,
+    cropped_save_path: str | None = None,
     roi_debug_save_path: str | None = None,
 ) -> dict[str, tuple[int, int, int]]:
     """
     Run the full image processing pipeline for one captured image.
 
     Steps:
-        1. Load raw image and compute homography.
-        2. Apply cv2.warpPerspective → flat plate image.
-        3. Compute grid cell dimensions from the plate image.
-        4. Slice grid into per-well ROI patches (all wells).
-        5. Save ROI debug overlay (red rectangles + well ID + W×H per cell).
-        6. Extract median RGB for each requested well_id.
-        7. Validate results.
+        1. Load raw image and compute perspective coefficients.
+        2. Apply PIL Image.PERSPECTIVE → flat warped image.
+        3. Crop to wellplate area (config.crop_box) — skipped if None.
+        4. Compute grid cell dimensions from the plate image.
+        5. Slice grid into per-well ROI patches (all wells).
+        6. Save ROI debug overlay (red rectangles + well ID + W×H per cell).
+        7. Extract median RGB for each requested well_id.
+        8. Validate results.
 
     Saved files (paths auto-derived from image_path if not supplied):
-        <name>_warped.jpg     — homography-corrected flat plate image.
+        <name>_warped.jpg     — full perspective-corrected image.
+        <name>_cropped.jpg    — wellplate crop (only when crop_box is set).
         <name>_roi_debug.jpg  — debug overlay with red ROI boxes and labels.
 
     Args:
@@ -504,6 +543,7 @@ def run_pipeline(
         well_ids:            Well IDs to extract RGB for, e.g. ["A1","A2","A3"].
         config:              ImageConfig. Defaults to DEFAULT_CONFIG.
         warped_save_path:    Optional path for the warped image.
+        cropped_save_path:   Optional path for the cropped wellplate image.
         roi_debug_save_path: Optional path for the ROI debug overlay.
 
     Returns:
@@ -511,41 +551,53 @@ def run_pipeline(
 
     Raises:
         FileNotFoundError: If image_path does not exist.
-        RuntimeError: If homography fails or RGB validation fails.
+        RuntimeError: If RGB validation fails.
     """
+    def ensure_parent_dir(path: str) -> None:
+        parent = os.path.dirname(os.path.abspath(path))
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+
     base, ext = os.path.splitext(image_path)
     ext = ext or ".jpg"
 
-    # Step 1 & 2: Load → homography → warp
-    raw_bgr = cv2.imread(image_path)
-    if raw_bgr is None:
-        raise FileNotFoundError(f"Image not found or unreadable: {image_path}")
-    raw_np = cv2.cvtColor(raw_bgr, cv2.COLOR_BGR2RGB)
-
-    H = compute_homography(config.src_corners, config.dst_corners)
-    plate_np = apply_warp(raw_np, H, config.output_size)
+    # Step 1 & 2: Load → perspective coefficients → warp
+    raw_pil = Image.open(image_path).convert("RGB")
+    coeffs = find_coeffs(config.dst_corners, config.src_corners)
+    warped_pil = raw_pil.transform(config.output_size, Image.PERSPECTIVE, coeffs, Image.BICUBIC)
+    warped_np = np.array(warped_pil)
 
     if warped_save_path is None:
         warped_save_path = f"{base}_warped{ext}"
-    Image.fromarray(plate_np).save(warped_save_path)
+    ensure_parent_dir(warped_save_path)
+    warped_pil.save(warped_save_path)
 
-    # Step 3 & 4: Grid dimensions + ROI slice
-    cell_w, cell_h = get_grid_dimensions(plate_np, config.col_num, config.row_num)
+    # Step 3: Optional crop to wellplate area
+    plate_np = crop_to_wellplate(warped_np, config.crop_box)
+
+    if config.crop_box is not None:
+        if cropped_save_path is None:
+            cropped_save_path = f"{base}_cropped{ext}"
+        ensure_parent_dir(cropped_save_path)
+        Image.fromarray(plate_np).save(cropped_save_path)
+
+    # Step 4 & 5: Grid dimensions + ROI slice
     patches, roi_boxes = slice_roi_patches(
         plate_np, config.col_num, config.row_num, config.offset_array
     )
 
-    # Step 5: ROI debug overlay
+    # Step 6: ROI debug overlay
     if roi_debug_save_path is None:
         roi_debug_save_path = f"{base}_roi_debug{ext}"
+    ensure_parent_dir(roi_debug_save_path)
     save_roi_debug_image(
         plate_np, roi_boxes, roi_debug_save_path, config.col_num, config.row_num
     )
 
-    # Step 6: RGB extraction
+    # Step 7: RGB extraction
     rgb_values = extract_well_rgb(patches, well_ids, config.col_num)
 
-    # Step 7: Validate
+    # Step 8: Validate
     passed, failures = validate_results(rgb_values)
     if not passed:
         raise RuntimeError(
