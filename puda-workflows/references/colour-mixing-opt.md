@@ -88,26 +88,26 @@ Base-colour-RGB-exp-<N>.jpg
 **Step 3a — Image processing (every iteration)**
 The image processing pipeline uses fixed, calibrated parameters — no VLM is needed. Call `run_pipeline()` on the captured image. The steps run in this exact order:
 1. Apply fixed perspective correction using calibrated `src_corners` and `dst_corners` → flat deck image
-2. Crop the corrected image using calibrated `crop_box` → cropped wellplate image
+2. Crop the corrected image using user-hardcoded `crop_box=(220, 240, 470, 430)` → cropped wellplate image
 3. Slice the cropped image into a `row_num × col_num` ROI grid (one patch per well)
 4. Compute median RGB for each requested well by `well_id`
 
-All parameters are stored in `DEFAULT_CONFIG` in `image_processing.py`. Re-calibrate only if the camera is physically moved. See [image-processing.md](image-processing.md) for the full field reference.
+All parameters are stored in `DEFAULT_CONFIG` in `image_processing.py`. Re-calibrate only if the camera is physically moved. The crop box is manually hardcoded by the user, not auto-detected. See [image-processing.md](image-processing.md) for the full field reference.
 
 ---
 
 ### Phase 2 — Per-Iteration Loop
 
 **Step 4 — Image processing**
-Call `run_pipeline(image_path, well_ids, config=DEFAULT_CONFIG)` on the captured image. All three steps (perspective correction → crop → ROI slice) use fixed calibrated parameters — no VLM or re-calibration is required each iteration.
+Call `run_pipeline(image_path, well_ids, config=DEFAULT_CONFIG)` on the captured image. The pipeline uses fixed calibrated parameters for perspective correction, the user-hardcoded crop box, and ROI slicing, so no VLM or re-calibration is required each iteration.
 
 See [image-processing.md](image-processing.md).
 
 **Step 5 — ROI extraction for all wells**
-Slide the cached ROI window across the cropped wellplate image to extract one patch per well, in row-major order (left to right, top to bottom). This covers every well on the plate regardless of whether it has a mix or is empty.
+Slice the cropped wellplate image into one ROI patch per well, in row-major order (left to right, top to bottom). This covers every well on the plate regardless of whether it has a mix or is empty.
 
 **Step 6 — RGB extraction from active wells**
-Compute the mean RGB for each extracted ROI patch. Then select the RGB values for the wells that contain the mixes (by well index, derived from the protocol's well assignments):
+Compute the median RGB for each extracted ROI patch. Then select the RGB values for the wells that contain the mixes (by `well_id`, derived from the protocol's well assignments):
 - Well index for A1 → `(R_mix_1, G_mix_1, B_mix_1)`
 - Well index for A2 → `(R_mix_2, G_mix_2, B_mix_2)`
 - Well index for A3 → `(R_mix_3, G_mix_3, B_mix_3)`

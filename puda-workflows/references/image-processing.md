@@ -1,12 +1,12 @@
 ---
 name: colour-mixing-image-processing
-description: Deterministic image processing pipeline using OpenCV homography warp, grid-based ROI slicing, and per-well RGB extraction. No VLM required. Calibrate once with ImageConfig; reuse for every captured image.
+description: Deterministic image processing pipeline using PIL perspective warp, grid-based ROI slicing, and per-well RGB extraction. No VLM required. Calibrate once with ImageConfig; reuse for every captured image.
 ---
 
 # Image Processing
 
 **Script**: [../scripts/image_processing.py](../scripts/image_processing.py)  
-**Dependencies**: `pip install numpy Pillow opencv-python`
+**Dependencies**: `pip install numpy Pillow`
 
 ---
 
@@ -17,12 +17,13 @@ The camera is in a fixed position. All geometry is calibrated once in `ImageConf
 ```
 run_pipeline(image_path, well_ids, config)
     │
-    ├── Step 1  compute_homography(src_corners → plate rectangle)  →  H (3×3 matrix)
-    ├── Step 2  cv2.warpPerspective(raw, H, output_size)           →  flat plate image
-    ├── Step 3  get_grid_dimensions(plate, 12, 8)                  →  cell_w, cell_h
-    ├── Step 4  slice_roi_patches(plate, 12, 8, offset_array)      →  96 ROI patches
-    ├── Step 5  save_roi_debug_image(...)                          →  <name>_roi_debug.jpg
-    └── Step 6  extract_well_rgb(patches, well_ids)                →  {well_id: (R,G,B)}
+    ├── Step 1  find_coeffs(dst_corners, src_corners)              →  8 coefficients
+    ├── Step 2  PIL Image.PERSPECTIVE transform                    →  warped image
+    ├── Step 3  crop_to_wellplate(warped, crop_box)                →  plate image  (skipped if crop_box=None)
+    ├── Step 4  get_grid_dimensions(plate, 12, 8)                  →  cell_w, cell_h
+    ├── Step 5  slice_roi_patches(plate, 12, 8, offset_array)      →  96 ROI patches
+    ├── Step 6  save_roi_debug_image(...)                          →  <name>_roi_debug.jpg
+    └── Step 7  extract_well_rgb(patches, well_ids)                →  {well_id: (R,G,B)}
 ```
 
 **Well orientation** — standard 96-well plate:
@@ -42,50 +43,56 @@ row H   H1      H2         H12     ← bottom-left to bottom-right
 | Field | Type | Description |
 |---|---|---|
 | `src_corners` | `list[(x,y)]` × 4 | Wellplate corners in the **raw** image [TL, TR, BR, BL]. Measure from the actual photo. |
-| `plate_width` | int | Width in pixels of the warped plate output. |
-| `plate_height` | int | Height in pixels of the warped plate output. |
+| `dst_corners` | `list[(x,y)]` × 4 | Destination rectangle in the **output** image [TL, TR, BR, BL]. Typically `[(0,0),(W,0),(W,H),(0,H)]`. |
+| `plate_width` | int | Width in pixels of the warped output image. |
+| `plate_height` | int | Height in pixels of the warped output image. |
+| `crop_box` | `(x1,y1,x2,y2)` or `None` | User-hardcoded crop applied **after** warp to isolate the wellplate from surrounding deck area. This is manually calibrated, not auto-detected. `None` = skip (default). |
 | `col_num` | int | Grid columns — `12` for plate columns 1–12 (left → right). |
 | `row_num` | int | Grid rows — `8` for plate rows A–H (top → bottom). |
 | `offset_array` | `[[xl,xr],[yt,yb]]` | Pixel inset per grid cell — keeps ROI inside the well, away from the rim. |
 
-`dst_corners` and `output_size` are **auto-derived** properties:
-- `dst_corners = [(0,0),(plate_width,0),(plate_width,plate_height),(0,plate_height)]`
-- `output_size = (plate_width, plate_height)`
+`output_size` is auto-derived as `(plate_width, plate_height)`.
 
 ### Default Calibration (`DEFAULT_CONFIG`)
 
 ```python
 DEFAULT_CONFIG = ImageConfig(
-    src_corners=[(814, 20), (1615, 0), (1500, 820), (883, 790)],
-    plate_width=1520,
-    plate_height=1460,
+    src_corners=[(245, 260), (420, 255), (455, 410), (230, 420)],
+    dst_corners=[(0, 0), (600, 0), (600, 400), (0, 400)],
+    plate_width=600,
+    plate_height=400,
     col_num=12,    # columns 1–12, left → right
     row_num=8,     # rows A–H, top → bottom
-    offset_array=[[22, 22], [14, 14]],
+    offset_array=[[8, 8], [8, 8]],
+    crop_box=(220, 240, 470, 430), # user-hardcoded crop in warped-image pixels
 )
+```
+
+Current default crop:
+
+```python
+crop_box = (220, 240, 470, 430)
 ```
 
 ---
 
-## Step 1 — Homography Matrix
+## Step 1 — Perspective Coefficients
 
 ```
-src_corners (raw image)  →  compute_homography()  →  H (3×3 float64)
+find_coeffs(dst_corners, src_corners)  →  8 floats
 ```
 
-`cv2.findHomography(src, dst, cv2.RANSAC)` fits the best projective transform mapping the four raw plate corners to the flat `plate_width × plate_height` rectangle. RANSAC makes it robust to small localisation errors.
-
-Unlike an 8-coefficient approximation, a full homography matrix handles all projective distortions (rotation, shear, perspective tilt) correctly.
+Solves the 8×8 linear system (via `np.linalg.solve`) that maps the four raw plate corners (`src_corners`) to the flat destination rectangle (`dst_corners`). The 8 coefficients define the projective transform passed to PIL.
 
 ---
 
 ## Step 2 — Perspective Warp
 
 ```
-raw image  →  cv2.warpPerspective(raw, H, output_size)  →  flat plate image
+raw image  →  PIL Image.PERSPECTIVE(coeffs)  →  flat plate image
 ```
 
-Every pixel in the output is back-projected through H to its source location in the raw image and interpolated with `cv2.INTER_CUBIC`. Result: a clean, upright, undistorted view of the wellplate exactly `plate_width × plate_height` pixels.
+PIL applies the coefficients with bicubic interpolation (`Image.BICUBIC`). Result: a clean, upright, undistorted view of the wellplate exactly `plate_width × plate_height` pixels.
 
 Saved as `<name>_warped.jpg`.
 
@@ -95,7 +102,7 @@ Saved as `<name>_warped.jpg`.
 
 ```python
 cell_w, cell_h = get_grid_dimensions(plate_np, col_num=12, row_num=8)
-# e.g. cell_w = 1520/12 ≈ 126.7 px,  cell_h = 1460/8 = 182.5 px
+# e.g. cell_w = 600/12 = 50.0 px,  cell_h = 400/8 = 50.0 px
 ```
 
 Divides the plate image dimensions by the grid counts to get the floating-point size of each well cell. Used by both `slice_roi_patches` and `crop_well`.
@@ -133,7 +140,7 @@ After slicing, `save_roi_debug_image()` draws a **red rectangle** at every ROI p
 
 Saved as `<name>_roi_debug.jpg`.
 
-**When RGB results look wrong, inspect this image first.** Misaligned rectangles mean `src_corners`, `offset_array`, or `crop_box` need adjusting.
+**When RGB results look wrong, inspect this image first.** Misaligned rectangles mean `src_corners`, `offset_array`, or the user-hardcoded `crop_box` need adjusting.
 
 ---
 
@@ -168,7 +175,8 @@ rgb_values = run_pipeline(
 
 | File | Description |
 |---|---|
-| `<name>_warped.jpg` | Homography-corrected flat plate image |
+| `<name>_warped.jpg` | Full perspective-corrected image (always saved) |
+| `<name>_cropped.jpg` | Wellplate crop — only saved when `crop_box` is set |
 | `<name>_roi_debug.jpg` | Red ROI rectangles + well ID + `W×H` label at every well |
 
 ### Re-calibrating `src_corners`
@@ -186,6 +194,14 @@ src_corners = [
 
 `plate_width` and `plate_height` set the output resolution — increase them for higher-resolution ROI patches.
 
+`DEFAULT_CONFIG` currently uses this hardcoded crop in warped-image pixel coordinates:
+
+```python
+crop_box = (220, 240, 470, 430)
+```
+
+Change this manually in `ImageConfig` if your camera position or framing changes. The pipeline does not estimate it automatically.
+
 ---
 
 ## Validation
@@ -197,6 +213,14 @@ src_corners = [
 | RGB range | All R, G, B in 0–255 | `RuntimeError` |
 | Colour spread | At least one channel varies by > 10 across active wells | `RuntimeError` — check dispense completed |
 
+Colour-spread validation only runs when more than one well is requested. A single-well extraction is valid and should not fail just because there is nothing to compare it against.
+
+Invalid well IDs are rejected before extraction. Examples:
+
+- `A0` fails because columns start at `1`
+- `A13` fails for a 12-column plate
+- `Z1` fails for an 8-row plate
+
 ---
 
 ## Rules
@@ -204,4 +228,5 @@ src_corners = [
 - Recalibrate `src_corners` whenever the camera is physically moved or refocused.
 - Capture **one image per iteration** after all dispenses are complete and the pipette arm is clear.
 - `run_pipeline()` always saves the warped image and the ROI debug image every call.
+- Custom save paths can point to new directories; parent folders are created automatically.
 - Inspect `<name>_roi_debug.jpg` first when RGB results look wrong.
