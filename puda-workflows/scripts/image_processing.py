@@ -1,590 +1,475 @@
 """
 Image processing pipeline for colour mixing experiments.
 
-The camera captures the entire OT-2 deck at a slight angle. Because deck
-corners are frequently cut off by the camera frame or obscured by the robot
-arm, full-deck perspective correction is unreliable. Instead the pipeline
-uses a crop-first approach:
+Fixed-geometry approach — no VLM required. The camera is mounted in a fixed
+position above the OT-2 deck. All geometric parameters are calibrated once
+and stored in ImageConfig; every captured image uses the same values.
 
-    1. Locate the target wellplate in the raw image (VLM).
-    2. Crop the raw image to that wellplate region.
-    3. Detect the wellplate's four corners within the crop (VLM).
-    4. Perspective-correct ONLY the cropped region → flat wellplate image.
-    5. Extract ROI patch size and stride from the flat image (VLM).
+Pipeline (applied to every captured image):
+    Step 1 — Compute homography matrix H from src_corners → plate rectangle.
+    Step 2 — Apply cv2.warpPerspective → flat, undistorted wellplate image.
+    Step 3 — Optional fine crop (crop_box) to trim any remaining border.
+    Step 4 — Compute grid cell dimensions from the plate image size.
+    Step 5 — Slice grid → one ROI patch per well (all 96 wells).
+    Step 6 — Save ROI debug overlay (red rectangles + W×H label at every well).
+    Step 7 — Crop and return median RGB for each requested well by ID.
 
-This keeps the perspective correction focused on a small, well-defined
-region where all four corners are always visible, avoiding the black-area
-artefact that occurs when deck corners fall outside the camera frame.
-
-CameraParams (raw_crop_box, plate_corners, ROI size, stride) are detected
-ONCE during calibration and cached for every subsequent iteration — no VLM
-call per iteration.
-
-VLM re-calibration is only triggered when Level 2 validation keeps failing,
-indicating the camera may have shifted.
-
-Perspective correction uses PIL's Image.PERSPECTIVE transform and a
-find_coeffs() solver — no OpenCV required.
-
-Calibration flow (run once):
-    Step 1  — VLM locates wellplate in the full raw image → raw_crop_box
-    Step 2  — Crop raw image to wellplate region → wellplate raw crop
-    Step 3  — VLM detects wellplate's 4 corners within the crop → plate_corners
-    Step 4  — Apply perspective correction to the crop → flat wellplate image
-    Step 5  — VLM detects ROI patch size and stride from the flat image
-
-Per-iteration pipeline (no VLM):
-    Level 1  — Crop raw image (raw_crop_box) → perspective-correct (plate_corners)
-               → extract ROI patches for ALL wells → mean RGB per well.
-    Level 2  — Plausibility validation of RGB values.
-    Level 3  — Retry Level 1, then re-calibrate via VLM if camera has shifted.
-
-Default model: "qwen/qwen3-vl-32b-instruct"
+Standard 96-well plate orientation:
+    - Columns 1–12 run left → right in the image.
+    - Rows A–H run top → bottom in the image.
+    So well A1 is top-left and H12 is bottom-right.
 
 Dependencies:
-    pip install numpy Pillow openai
+    pip install numpy Pillow opencv-python
 """
 
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass
 
+import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 
 # ---------------------------------------------------------------------------
-# Camera parameters dataclass
+# Image configuration dataclass
 # ---------------------------------------------------------------------------
 
 @dataclass
-class CameraParams:
+class ImageConfig:
     """
-    Cached camera calibration parameters.
+    Fixed geometric parameters for one camera-and-plate setup.
 
-    Detected by VLM once before the experiment loop starts.
-    Passed into run_level1() for every iteration — no VLM call per iteration.
-    Re-calibrate only if the camera shifts or the plate is repositioned.
+    Calibrate these values once for the physical rig; reuse for every image.
 
-    Attributes:
-        raw_crop_box:  [x1, y1, x2, y2] bounding box of the wellplate in the
-                       RAW camera image (pixels before any correction). Used to
-                       isolate the wellplate region before perspective correction.
-        plate_corners: Four corners of the wellplate within the CROPPED raw
-                       image region, ordered [TL, TR, BR, BL], each as [x, y].
-                       Used to compute the perspective correction coefficients
-                       that flatten the cropped region to a top-down view.
-        roi_w:         Width of a single well ROI patch in pixels. Must be
-                       smaller than the physical well diameter in pixels.
-        roi_h:         Height of a single well ROI patch in pixels. Must be
-                       smaller than the physical well diameter in pixels.
-        stride_x:      Horizontal step between adjacent well centres in pixels.
-        stride_y:      Vertical step between adjacent well centres in pixels.
+    Homography:
+        src_corners:  Four wellplate corners in the RAW image, ordered
+                      [TL, TR, BR, BL], each as (x, y) in pixels.
+                      Measure these from the raw captured photo.
+        plate_width:  Width in pixels of the desired warped plate output.
+        plate_height: Height in pixels of the desired warped plate output.
+                      The homography maps src_corners to the rectangle
+                      [(0,0), (plate_width,0), (plate_width,plate_height),
+                       (0,plate_height)].
+
+    ROI grid (applied directly to the warped plate image):
+        col_num:      Columns in the grid. 12 for a 96-well plate (cols 1–12).
+        row_num:      Rows in the grid. 8 for a 96-well plate (rows A–H).
+        offset_array: [[x_pad_left, x_pad_right], [y_pad_top, y_pad_bottom]]
+                      Pixel inset per grid cell — keeps the ROI inside the well
+                      and away from the rim.
     """
-    raw_crop_box: list[int]
-    plate_corners: list[list[float]]
-    roi_w: int
-    roi_h: int
-    stride_x: int
-    stride_y: int
+    src_corners: list[tuple[int, int]]
+    plate_width: int
+    plate_height: int
+    col_num: int
+    row_num: int
+    offset_array: list[list[int]]
+
+    @property
+    def dst_corners(self) -> list[tuple[int, int]]:
+        """Flat destination rectangle that src_corners map to after warping."""
+        return [
+            (0, 0),
+            (self.plate_width, 0),
+            (self.plate_width, self.plate_height),
+            (0, self.plate_height),
+        ]
 
     @property
     def output_size(self) -> tuple[int, int]:
-        """
-        (width, height) of the perspective-corrected output image.
-        Derived from real distances between the detected wellplate corners.
-        """
-        pts = np.array(self.plate_corners, dtype=np.float64)
-        tl, tr, br, bl = pts
-        top_w    = int(np.linalg.norm(tr - tl))
-        bottom_w = int(np.linalg.norm(br - bl))
-        left_h   = int(np.linalg.norm(bl - tl))
-        right_h  = int(np.linalg.norm(br - tr))
-        return max(top_w, bottom_w), max(left_h, right_h)
+        """(width, height) passed to cv2.warpPerspective."""
+        return (self.plate_width, self.plate_height)
 
-    @property
-    def reference_rect(self) -> list[tuple[int, int]]:
-        """Flat destination rectangle matching output_size, ordered TL, TR, BR, BL."""
-        w, h = self.output_size
-        return [(0, 0), (w, 0), (w, h), (0, h)]
+
+# Default calibration for the standard OT-2 camera rig.
+# Adjust src_corners if the camera is repositioned.
+# Adjust plate_width/plate_height to control warp output resolution.
+# Adjust crop_box if border artefacts appear after warping.
+DEFAULT_CONFIG = ImageConfig(
+    src_corners=[(814, 20), (1615, 0), (1500, 820), (883, 790)],
+    plate_width=1520,
+    plate_height=1460,
+    col_num=12,    # columns 1–12, left → right
+    row_num=8,     # rows A–H, top → bottom
+    offset_array=[[22, 22], [14, 14]],
+)
 
 
 # ---------------------------------------------------------------------------
-# Perspective correction (PIL-based, no OpenCV)
+# Homography and warp
 # ---------------------------------------------------------------------------
 
-def find_coeffs(
-    pa: list[tuple[int, int]],
-    pb: list[tuple[int, int]],
-) -> list[float]:
+def compute_homography(
+    src_corners: list[tuple[int, int]],
+    dst_corners: list[tuple[int, int]],
+) -> np.ndarray:
     """
-    Compute 8 perspective transformation coefficients for PIL's Image.PERSPECTIVE.
+    Compute the 3×3 homography matrix H that maps src_corners to dst_corners.
 
-    Solves the least-squares system mapping source points (pa) to destination
-    points (pb). Pass to img.transform(..., Image.PERSPECTIVE, coeffs, ...).
+    Uses cv2.findHomography with RANSAC for robustness. The result is passed
+    to apply_warp().
 
     Args:
-        pa: Four points in the OUTPUT image (destination), e.g. a flat rectangle.
-        pb: Four corresponding points in the INPUT image (source plate corners).
+        src_corners: Four points in the RAW image [TL, TR, BR, BL].
+        dst_corners: Four corresponding points in the OUTPUT image.
 
     Returns:
-        List of 8 floats [a, b, c, d, e, f, g, h] for use in img.transform().
+        3×3 float64 numpy array — the homography matrix H.
+
+    Raises:
+        RuntimeError: If OpenCV cannot compute a valid homography.
     """
-    matrix = []
-    for p1, p2 in zip(pa, pb):
-        matrix.append([p1[0], p1[1], 1, 0, 0, 0, -p2[0] * p1[0], -p2[0] * p1[1]])
-        matrix.append([0, 0, 0, p1[0], p1[1], 1, -p2[1] * p1[0], -p2[1] * p1[1]])
-    A = np.array(matrix, dtype=np.float64)
-    B = np.array(pb, dtype=np.float64).reshape(8)
-    res = np.linalg.lstsq(A, B, rcond=None)[0]
-    return res.tolist()
+    src = np.float32(src_corners)
+    dst = np.float32(dst_corners)
+    H, mask = cv2.findHomography(src, dst, cv2.RANSAC, ransacReprojThreshold=5.0)
+    if H is None:
+        raise RuntimeError(
+            "cv2.findHomography returned None. "
+            "Check that src_corners are correct and not collinear."
+        )
+    return H
 
 
-def apply_perspective_correction(
-    image_pil: Image.Image,
-    params: CameraParams,
-) -> Image.Image:
+def apply_warp(
+    image_np: np.ndarray,
+    H: np.ndarray,
+    output_size: tuple[int, int],
+) -> np.ndarray:
     """
-    Apply perspective correction to the cropped wellplate image.
-
-    Maps the detected wellplate corners (within the crop) to a flat rectangle,
-    producing a top-down view of the wellplate at its natural dimensions.
+    Apply homography H to image_np and produce a flat output image.
 
     Args:
-        image_pil: Cropped raw PIL Image (crop of the wellplate region).
-        params: CameraParams containing plate_corners and output_size.
+        image_np:    Raw image as NumPy array (H, W, 3) in RGB.
+        H:           3×3 homography matrix from compute_homography().
+        output_size: (width, height) of the output image.
 
     Returns:
-        Perspective-corrected PIL Image sized params.output_size.
+        Warped image as NumPy array (height, width, 3) in RGB.
     """
-    coeffs = find_coeffs(params.reference_rect, params.plate_corners)
-    return image_pil.transform(
-        params.output_size,
-        Image.PERSPECTIVE,
-        coeffs,
-        Image.BICUBIC,
-    )
+    return cv2.warpPerspective(image_np, H, output_size, flags=cv2.INTER_CUBIC)
+
+
+def warp_image(
+    image_np: np.ndarray,
+    config: ImageConfig,
+) -> np.ndarray:
+    """
+    Convenience wrapper: compute homography and warp in one call.
+
+    Maps config.src_corners to config.dst_corners and produces a
+    config.plate_width × config.plate_height flat plate image.
+
+    Args:
+        image_np: Raw image as NumPy array (H, W, 3) in RGB.
+        config:   ImageConfig with src_corners and plate dimensions.
+
+    Returns:
+        Warped plate image as NumPy array (plate_height, plate_width, 3).
+    """
+    H = compute_homography(config.src_corners, config.dst_corners)
+    return apply_warp(image_np, H, config.output_size)
 
 
 # ---------------------------------------------------------------------------
-# ROI extraction and RGB computation
+# Grid dimensions
 # ---------------------------------------------------------------------------
 
-def extract_roi_patches(
-    image: np.ndarray,
-    roi_w: int,
-    roi_h: int,
-    stride_x: int,
-    stride_y: int,
-) -> list[np.ndarray]:
+def get_grid_dimensions(
+    plate_np: np.ndarray,
+    col_num: int,
+    row_num: int,
+) -> tuple[float, float]:
     """
-    Slide a window across the flat wellplate image to extract per-well patches.
+    Compute the pixel dimensions of one grid cell in the plate image.
 
-    Covers every well on the plate in row-major order (left to right, top to
-    bottom). Patches are extracted for ALL wells regardless of whether they
-    contain a mix — the caller filters by well index for active wells.
+    After warping (and optional crop), the plate image is divided into
+    row_num × col_num equal cells. This function returns the floating-point
+    width and height of each cell.
 
     Args:
-        image: Flat perspective-corrected wellplate image as NumPy array (H, W, 3).
-               Must be the output of apply_perspective_correction(), not the raw crop.
-        roi_w: ROI patch width in pixels (must be smaller than the well diameter).
-        roi_h: ROI patch height in pixels (must be smaller than the well diameter).
-        stride_x: Horizontal step between adjacent well centres in pixels.
-        stride_y: Vertical step between adjacent well centres in pixels.
+        plate_np: Flat plate image (after warp + optional crop) as NumPy array.
+        col_num:  Number of columns in the grid (e.g. 12).
+        row_num:  Number of rows in the grid (e.g. 8).
 
     Returns:
-        List of ROI patches as NumPy arrays (H, W, 3), in row-major order.
+        (cell_w, cell_h) — pixel dimensions of one grid cell (float).
     """
-    patches = []
-    h, w = image.shape[:2]
-    for y in range(0, h - roi_h + 1, stride_y):
-        for x in range(0, w - roi_w + 1, stride_x):
-            patches.append(image[y:y + roi_h, x:x + roi_w])
-    return patches
+    h, w = plate_np.shape[:2]
+    return w / col_num, h / row_num
 
+
+# ---------------------------------------------------------------------------
+# ROI grid slicing
+# ---------------------------------------------------------------------------
+
+def slice_roi_patches(
+    plate_np: np.ndarray,
+    col_num: int,
+    row_num: int,
+    offset_array: list[list[int]],
+) -> tuple[list[np.ndarray], list[tuple[int, int, int, int]]]:
+    """
+    Divide the flat plate image into a grid and extract one ROI patch per well.
+
+    Each grid cell is shrunk inward by offset_array to avoid the well rim.
+    Patches are returned in row-major order: A1, A2, …, A12, B1, B2, …, H12.
+
+    Args:
+        plate_np:     Flat plate image (after warp + optional crop), (H, W, 3).
+        col_num:      Number of grid columns (12 for cols 1–12).
+        row_num:      Number of grid rows (8 for rows A–H).
+        offset_array: [[x_pad_left, x_pad_right], [y_pad_top, y_pad_bottom]].
+
+    Returns:
+        patches:   List of ROI arrays in row-major order (96 items for 96-well).
+        roi_boxes: List of (x1, y1, x2, y2) for each patch — used by the debug image.
+    """
+    cell_w, cell_h = get_grid_dimensions(plate_np, col_num, row_num)
+    x_pad_l, x_pad_r = offset_array[0]
+    y_pad_t, y_pad_b = offset_array[1]
+
+    patches: list[np.ndarray] = []
+    roi_boxes: list[tuple[int, int, int, int]] = []
+
+    for row in range(row_num):
+        for col in range(col_num):
+            x1 = int(cell_w * col) + x_pad_l
+            x2 = int(cell_w * (col + 1)) - x_pad_r
+            y1 = int(cell_h * row) + y_pad_t
+            y2 = int(cell_h * (row + 1)) - y_pad_b
+            patches.append(plate_np[y1:y2, x1:x2])
+            roi_boxes.append((x1, y1, x2, y2))
+
+    return patches, roi_boxes
+
+
+# ---------------------------------------------------------------------------
+# Well slot mapping and single-well crop
+# ---------------------------------------------------------------------------
+
+def well_to_grid_pos(well_id: str) -> tuple[int, int]:
+    """
+    Convert a well identifier to its (image_row, image_col) grid position.
+
+    Standard orientation — columns 1–12 run left→right, rows A–H run top→bottom:
+        A1  → (row=0, col=0)   top-left
+        A12 → (row=0, col=11)  top-right
+        H1  → (row=7, col=0)   bottom-left
+        H12 → (row=7, col=11)  bottom-right
+
+    Args:
+        well_id: Well identifier, e.g. "A1", "B3", "H12".
+
+    Returns:
+        (image_row, image_col) zero-based grid indices.
+
+    Raises:
+        ValueError: If the format is invalid.
+    """
+    if len(well_id) < 2 or not well_id[0].isalpha() or not well_id[1:].isdigit():
+        raise ValueError(f"Invalid well_id '{well_id}'. Expected format e.g. 'A1'.")
+    image_row = ord(well_id[0].upper()) - ord('A')   # A→0 … H→7
+    image_col = int(well_id[1:]) - 1                 # 1→0 … 12→11
+    return image_row, image_col
+
+
+def well_to_roi_index(well_id: str, col_num: int) -> int:
+    """
+    Convert a well identifier to its flat index in the patches list.
+
+    Patches are stored in row-major order (A1=0, A2=1, …, A12=11, B1=12, …).
+
+    Args:
+        well_id:  Well identifier, e.g. "A1", "B3", "H12".
+        col_num:  Number of grid columns (12 for a 96-well plate).
+
+    Returns:
+        Integer index into the patches list from slice_roi_patches().
+    """
+    image_row, image_col = well_to_grid_pos(well_id)
+    return image_row * col_num + image_col
+
+
+def crop_well(
+    plate_np: np.ndarray,
+    well_id: str,
+    col_num: int,
+    row_num: int,
+    offset_array: list[list[int]],
+) -> tuple[np.ndarray, tuple[int, int, int, int]]:
+    """
+    Crop a single named well from the flat plate image.
+
+    Computes the well's pixel bounding box from the grid dimensions, applies
+    the offset_array inset, and returns the patch array and its box.
+
+    Args:
+        plate_np:     Flat plate image (after warp + optional crop), (H, W, 3).
+        well_id:      Well identifier, e.g. "A1", "B3", "H12".
+        col_num:      Number of grid columns (12).
+        row_num:      Number of grid rows (8).
+        offset_array: [[x_pad_left, x_pad_right], [y_pad_top, y_pad_bottom]].
+
+    Returns:
+        (patch, (x1, y1, x2, y2)) — the well's ROI array and its bounding box
+        in plate_np coordinates.
+    """
+    cell_w, cell_h = get_grid_dimensions(plate_np, col_num, row_num)
+    image_row, image_col = well_to_grid_pos(well_id)
+
+    x_pad_l, x_pad_r = offset_array[0]
+    y_pad_t, y_pad_b = offset_array[1]
+
+    x1 = int(cell_w * image_col) + x_pad_l
+    x2 = int(cell_w * (image_col + 1)) - x_pad_r
+    y1 = int(cell_h * image_row) + y_pad_t
+    y2 = int(cell_h * (image_row + 1)) - y_pad_b
+
+    return plate_np[y1:y2, x1:x2], (x1, y1, x2, y2)
+
+
+# ---------------------------------------------------------------------------
+# ROI debug visualisation
+# ---------------------------------------------------------------------------
+
+def save_roi_debug_image(
+    plate_np: np.ndarray,
+    roi_boxes: list[tuple[int, int, int, int]],
+    save_path: str,
+    col_num: int,
+    row_num: int,
+    outline_colour: tuple[int, int, int] = (220, 30, 30),
+    outline_width: int = 2,
+    font_size: int = 9,
+) -> str:
+    """
+    Draw red rectangles over every ROI patch on the flat plate image and label
+    each with its pixel dimensions (W×H) and well ID (e.g. A1).
+
+    Args:
+        plate_np:      Flat plate image as NumPy array (H, W, 3) in RGB.
+        roi_boxes:     List of (x1, y1, x2, y2) from slice_roi_patches().
+        save_path:     File path to save the annotated image.
+        col_num:       Number of grid columns (needed to derive well IDs).
+        row_num:       Number of grid rows (needed to derive well IDs).
+        outline_colour: RGB colour of the rectangle outlines. Default: red.
+        outline_width: Border thickness in pixels.
+        font_size:     Font size for labels.
+
+    Returns:
+        save_path, so the caller can log it.
+    """
+    debug_pil = Image.fromarray(plate_np.astype(np.uint8), "RGB")
+    draw = ImageDraw.Draw(debug_pil)
+
+    try:
+        font = ImageFont.truetype("arial.ttf", font_size)
+    except (OSError, IOError):
+        font = ImageFont.load_default()
+
+    rows = "ABCDEFGH"
+    for idx, (x1, y1, x2, y2) in enumerate(roi_boxes):
+        row_idx = idx // col_num
+        col_idx = idx % col_num
+        well_id = f"{rows[row_idx]}{col_idx + 1}"
+        patch_w, patch_h = x2 - x1, y2 - y1
+        label = f"{well_id} {patch_w}×{patch_h}"
+
+        draw.rectangle([x1, y1, x2, y2], outline=outline_colour, width=outline_width)
+        draw.text((x1 + 1, y1 + 1), label, fill=outline_colour, font=font)
+
+    os.makedirs(os.path.dirname(os.path.abspath(save_path)), exist_ok=True)
+    debug_pil.save(save_path)
+    return save_path
+
+
+# ---------------------------------------------------------------------------
+# RGB extraction
+# ---------------------------------------------------------------------------
 
 def mean_rgb(patch: np.ndarray) -> tuple[int, int, int]:
     """
-    Compute the mean RGB of a patch.
+    Compute the median RGB of a well ROI patch.
+
+    Uses median instead of mean to suppress outlier pixels (dust, reflections).
 
     Args:
-        patch: ROI image patch as a NumPy array (H, W, 3) in RGB.
+        patch: ROI patch as NumPy array (H, W, 3) in RGB.
 
     Returns:
-        (R, G, B) mean values as integers 0–255.
+        (R, G, B) median values as integers 0–255.
     """
-    mean = patch.mean(axis=(0, 1))
-    return tuple(int(v) for v in mean)
+    return (
+        int(np.median(patch[:, :, 0])),
+        int(np.median(patch[:, :, 1])),
+        int(np.median(patch[:, :, 2])),
+    )
 
 
-# ---------------------------------------------------------------------------
-# VLM helper
-# ---------------------------------------------------------------------------
-
-DEFAULT_VLM_MODEL = "qwen/qwen3-vl-32b-instruct"
-
-
-def _vlm_call(
-    image_path: str,
-    prompt: str,
-    model: str = DEFAULT_VLM_MODEL,
-    api_key: str | None = None,
-) -> dict:
+def extract_well_rgb(
+    patches: list[np.ndarray],
+    well_ids: list[str],
+    col_num: int,
+) -> dict[str, tuple[int, int, int]]:
     """
-    Send an image + prompt to Qwen3 VL 32B via OpenRouter and parse JSON.
+    Extract the median RGB value for each specified well.
 
     Args:
-        image_path: Path to the image file.
-        prompt: Instruction prompt asking for a JSON response.
-        model: OpenRouter model identifier.
-        api_key: OpenRouter API key. Falls back to OPENROUTER_API_KEY env var.
+        patches:  Full list of ROI patches from slice_roi_patches() — all wells.
+        well_ids: List of well identifiers, e.g. ["A1", "A2", "A3"].
+        col_num:  Number of grid columns used during slicing (12).
 
     Returns:
-        Parsed JSON dict from the VLM response.
-
-    Raises:
-        ValueError: If the response cannot be parsed as valid JSON.
+        Dict mapping each well_id to its (R, G, B) median tuple.
     """
-    import base64
-    from openai import OpenAI
-
-    with open(image_path, "rb") as f:
-        b64 = base64.b64encode(f.read()).decode("utf-8")
-
-    client = OpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=api_key or os.environ["OPENROUTER_API_KEY"],
-    )
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
-                ],
-            }
-        ],
-    )
-    content = response.choices[0].message.content
-    try:
-        return json.loads(content)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"VLM returned invalid JSON:\n{content}") from exc
+    return {wid: mean_rgb(patches[well_to_roi_index(wid, col_num)]) for wid in well_ids}
 
 
 # ---------------------------------------------------------------------------
-# Calibration VLM prompts
-# ---------------------------------------------------------------------------
-
-VLM_LOCATE_WELLPLATE_PROMPT = """\
-This is an image captured by an overhead camera showing an Opentrons OT-2 \
-laboratory robot deck. The deck contains multiple labware items (well plates, \
-tip racks, vials, etc.) arranged in slots.
-
-Locate the WELL PLATE — the flat rectangular labware that has a regular grid \
-of small circular wells covering its surface. Return a tight bounding box \
-around that well plate only.
-
-Return ONLY valid JSON, no explanation:
-{
-  "raw_crop_box": [x1, y1, x2, y2]
-}
-
-x1, y1 = top-left pixel of the well plate in this raw image.
-x2, y2 = bottom-right pixel of the well plate in this raw image.
-Add approximately 20 pixels of padding on each side if possible.
-"""
-
-VLM_CALIBRATE_CORNERS_PROMPT = """\
-This is a cropped image showing only a laboratory well plate on an Opentrons \
-OT-2 deck. The image may still appear slightly angled or in perspective.
-
-Identify the four corners of the well plate surface and return their pixel \
-coordinates within THIS cropped image.
-
-Return ONLY valid JSON, no explanation:
-{
-  "plate_corners": [[x1,y1],[x2,y2],[x3,y3],[x4,y4]]
-}
-
-Order: top-left, top-right, bottom-right, bottom-left of the well plate.
-Use the outer edges of the plate frame, not the well positions.
-"""
-
-VLM_CALIBRATE_ROI_PROMPT = """\
-This is a flat top-down image of a laboratory well plate produced after \
-perspective correction. Only the plate surface is visible.
-
-Analyse the well layout and return:
-1. roi_size — [width, height] in pixels of a single well ROI patch.
-   The patch must be SMALLER than the well diameter so it captures only
-   the interior colour and avoids the well edge.
-2. stride   — [stride_x, stride_y] in pixels between adjacent well centres
-   (centre-to-centre distance, not edge-to-edge).
-
-Return ONLY valid JSON, no explanation:
-{
-  "roi_size": [roi_w, roi_h],
-  "stride": [stride_x, stride_y]
-}
-"""
-
-
-# ---------------------------------------------------------------------------
-# Calibration (run once before the experiment loop)
-# ---------------------------------------------------------------------------
-
-def calibrate_camera(
-    reference_image_path: str,
-    vlm_model: str = DEFAULT_VLM_MODEL,
-    vlm_api_key: str | None = None,
-    raw_crop_save_path: str | None = None,
-    corrected_save_path: str | None = None,
-    plate_description: str | None = None,
-) -> CameraParams:
-    """
-    Locate the wellplate in the raw image, crop it, perspective-correct the
-    crop, and extract ROI parameters.
-
-    Call this ONCE before the experiment loop starts.
-    The returned CameraParams are reused for every iteration.
-    Re-call only if the camera shifts or the plate is repositioned.
-
-    Steps:
-        1. VLM locates the wellplate in the full raw deck image → raw_crop_box.
-        2. Crop the raw image to the wellplate region → wellplate raw crop.
-        3. VLM detects the wellplate's 4 corners within the crop → plate_corners.
-        4. Apply perspective correction to the crop → flat wellplate image.
-        5. VLM detects ROI patch size and stride from the flat wellplate image.
-
-    Args:
-        reference_image_path: Path to a reference image captured after the
-                               initial mixes are dispensed, showing the full
-                               OT-2 deck with the target wellplate visible.
-        vlm_model: OpenRouter model identifier.
-        vlm_api_key: OpenRouter API key (optional, falls back to env var).
-        raw_crop_save_path: Optional path to save the raw wellplate crop image.
-        corrected_save_path: Optional path to save the perspective-corrected
-                             flat wellplate image.
-        plate_description: Optional hint for the VLM to identify the correct
-                           labware (e.g. "black 96-well plate in slot 9").
-                           Prepended to the locate prompt when provided.
-
-    Returns:
-        CameraParams ready to pass into run_level1() for all iterations.
-    """
-    base, ext = os.path.splitext(reference_image_path)
-    ext = ext or ".jpg"
-
-    # Step 1: VLM locates the wellplate bounding box in the full raw image.
-    locate_prompt = VLM_LOCATE_WELLPLATE_PROMPT
-    if plate_description:
-        locate_prompt = f"The target well plate is: {plate_description}.\n\n" + locate_prompt
-    locate_resp = _vlm_call(reference_image_path, locate_prompt, vlm_model, vlm_api_key)
-    raw_crop_box = locate_resp["raw_crop_box"]  # [x1, y1, x2, y2] in raw image pixels
-
-    # Step 2: Crop the raw image to the wellplate region.
-    raw_pil = Image.open(reference_image_path).convert("RGB")
-    raw_crop_pil = raw_pil.crop(tuple(raw_crop_box))
-    if raw_crop_save_path is None:
-        raw_crop_save_path = f"{base}_wellplate_raw_crop{ext}"
-    raw_crop_pil.save(raw_crop_save_path)
-
-    # Step 3: VLM detects the wellplate's 4 corners within the cropped image.
-    corners_resp = _vlm_call(raw_crop_save_path, VLM_CALIBRATE_CORNERS_PROMPT, vlm_model, vlm_api_key)
-    plate_corners = corners_resp["plate_corners"]
-
-    # Step 4: Build params with the detected corners and apply perspective
-    # correction to the crop, producing a flat top-down wellplate image.
-    temp_params = CameraParams(
-        raw_crop_box=raw_crop_box,
-        plate_corners=plate_corners,
-        roi_w=0,
-        roi_h=0,
-        stride_x=0,
-        stride_y=0,
-    )
-    corrected_pil = apply_perspective_correction(raw_crop_pil, temp_params)
-    if corrected_save_path is None:
-        corrected_save_path = f"{base}_wellplate_corrected{ext}"
-    corrected_pil.save(corrected_save_path)
-
-    # Step 5: VLM detects ROI patch size and stride from the flat wellplate image.
-    roi_resp = _vlm_call(corrected_save_path, VLM_CALIBRATE_ROI_PROMPT, vlm_model, vlm_api_key)
-    roi_w, roi_h = roi_resp["roi_size"]
-    stride_x, stride_y = roi_resp["stride"]
-
-    return CameraParams(
-        raw_crop_box=raw_crop_box,
-        plate_corners=plate_corners,
-        roi_w=roi_w,
-        roi_h=roi_h,
-        stride_x=stride_x,
-        stride_y=stride_y,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Level 1 — Per-iteration processing (no VLM call)
-# ---------------------------------------------------------------------------
-
-def run_level1(
-    image_path: str,
-    params: CameraParams,
-    raw_crop_save_path: str | None = None,
-    corrected_save_path: str | None = None,
-) -> tuple[list[np.ndarray], list[tuple[int, int, int]]]:
-    """
-    Process one captured image using cached CameraParams. No VLM call is made.
-
-    Crops the wellplate from the raw image using the stored raw_crop_box, then
-    applies the stored perspective correction to produce a flat top-down view,
-    then extracts ROI patches for every well across the entire plate.
-
-    Flow:
-        1. Load raw image
-        2. Crop to wellplate region using stored raw_crop_box
-        3. Apply perspective correction using stored plate_corners
-        4. Extract ROI patches for ALL wells via sliding window
-           (stored roi_w / roi_h / stride_x / stride_y)
-        5. Compute mean RGB per well
-
-    Args:
-        image_path: Path to the captured image for this iteration.
-                    The image must show the complete OT-2 deck.
-        params: CameraParams from calibrate_camera() — reused every iteration.
-        raw_crop_save_path: Optional path to save the raw wellplate crop for audit.
-        corrected_save_path: Optional path to save the corrected image for audit.
-
-    Returns:
-        (patches, rgb_values) — ROI patches and mean RGB tuples for every well
-        across the whole plate, in row-major order (left to right, top to bottom).
-        The caller selects specific well indices to get RGB for active wells.
-    """
-    base, ext = os.path.splitext(image_path)
-    ext = ext or ".jpg"
-
-    # Step 1: Load raw image
-    raw_pil = Image.open(image_path).convert("RGB")
-
-    # Step 2: Crop to wellplate region using stored raw_crop_box
-    raw_crop_pil = raw_pil.crop(tuple(params.raw_crop_box))
-    if raw_crop_save_path is None:
-        raw_crop_save_path = f"{base}_wellplate_raw_crop{ext}"
-    raw_crop_pil.save(raw_crop_save_path)
-
-    # Step 3: Apply perspective correction to the crop → flat wellplate image
-    corrected_pil = apply_perspective_correction(raw_crop_pil, params)
-    if corrected_save_path is None:
-        corrected_save_path = f"{base}_wellplate_corrected{ext}"
-    corrected_pil.save(corrected_save_path)
-
-    # Step 4: Extract ROI patches for ALL wells in the plate (sliding window)
-    corrected_np = np.array(corrected_pil)
-    patches = extract_roi_patches(
-        corrected_np, params.roi_w, params.roi_h, params.stride_x, params.stride_y
-    )
-
-    # Step 5: Compute mean RGB per well
-    rgb_values = [mean_rgb(p) for p in patches]
-
-    return patches, rgb_values
-
-
-# ---------------------------------------------------------------------------
-# Level 2 — Validation
+# Validation
 # ---------------------------------------------------------------------------
 
 def validate_results(
-    patches: list[np.ndarray],
-    rgb_values: list[tuple[int, int, int]],
-    expected_well_count: int,
-    min_variance: float = 1.0,
+    rgb_values: dict[str, tuple[int, int, int]],
     min_colour_spread: int = 10,
 ) -> tuple[bool, list[str]]:
     """
-    Validate that Level 1 results are plausible before passing to the optimizer.
+    Validate that extracted RGB values are plausible.
 
     Checks:
-        1. RGB range      — all values in 0–255
-        2. Patch count    — matches expected_well_count (total plate wells)
-        3. Patch variance — each patch has non-zero pixel variance (not blank/black)
-        4. Colour spread  — at least one channel differs by > min_colour_spread
-                            across wells (checks that active wells differ from empties)
+        1. RGB range   — all channel values in 0–255.
+        2. Colour spread — at least one channel varies by > min_colour_spread
+                          across active wells (confirms mixes were dispensed).
 
     Args:
-        patches: List of extracted ROI patches.
-        rgb_values: List of (R, G, B) mean values per patch.
-        expected_well_count: Total number of wells on the plate (e.g. 96).
-        min_variance: Minimum acceptable pixel variance per patch. Default: 1.0.
-        min_colour_spread: Minimum channel range across wells. Default: 10.
+        rgb_values:        {well_id: (R, G, B)} from extract_well_rgb().
+        min_colour_spread: Minimum inter-well channel range. Default: 10.
 
     Returns:
-        (passed, failures) — passed is True if all checks pass.
+        (passed, failures) — passed is True when all checks pass.
     """
-    failures = []
+    failures: list[str] = []
 
-    for i, (r, g, b) in enumerate(rgb_values):
+    for wid, (r, g, b) in rgb_values.items():
         if not (0 <= r <= 255 and 0 <= g <= 255 and 0 <= b <= 255):
-            failures.append(f"Well {i}: RGB ({r},{g},{b}) out of 0–255 range.")
-
-    if len(patches) != expected_well_count:
-        failures.append(
-            f"Patch count {len(patches)} does not match expected {expected_well_count} wells."
-        )
-
-    for i, patch in enumerate(patches):
-        if patch.var() < min_variance:
-            failures.append(
-                f"Well {i}: patch variance {patch.var():.2f} below threshold {min_variance}."
-            )
+            failures.append(f"Well {wid}: RGB ({r},{g},{b}) out of 0–255 range.")
 
     if rgb_values:
-        for ch in range(3):
-            values = [rgb[ch] for rgb in rgb_values]
-            if (max(values) - min(values)) >= min_colour_spread:
+        per_channel = list(zip(*rgb_values.values()))
+        for ch in per_channel:
+            if (max(ch) - min(ch)) >= min_colour_spread:
                 break
         else:
             failures.append(
-                f"All wells have nearly identical colours — spread < {min_colour_spread} on all channels."
+                f"All active wells have nearly identical colours "
+                f"(spread < {min_colour_spread} on every channel). "
+                "Check that mixes were actually dispensed."
             )
 
     return len(failures) == 0, failures
-
-
-# ---------------------------------------------------------------------------
-# Level 3 — Re-calibration (camera shifted)
-# ---------------------------------------------------------------------------
-
-def recalibrate_and_run(
-    image_path: str,
-    expected_well_count: int,
-    vlm_model: str = DEFAULT_VLM_MODEL,
-    vlm_api_key: str | None = None,
-) -> tuple[list[np.ndarray], list[tuple[int, int, int]], CameraParams]:
-    """
-    Re-run VLM calibration on the current image and immediately process it.
-
-    Called when Level 2 validation keeps failing, suggesting the camera has
-    shifted since the initial calibrate_camera() call.
-
-    Args:
-        image_path: Path to the current captured image (full deck view).
-        expected_well_count: Total number of wells on the plate.
-        vlm_model: OpenRouter model identifier.
-        vlm_api_key: OpenRouter API key (optional).
-
-    Returns:
-        (patches, rgb_values, new_params) — new_params should be stored by
-        the caller to replace the old CameraParams for future iterations.
-    """
-    new_params = calibrate_camera(image_path, vlm_model, vlm_api_key)
-    patches, rgb_values = run_level1(image_path, new_params)
-    return patches, rgb_values, new_params
 
 
 # ---------------------------------------------------------------------------
@@ -593,65 +478,79 @@ def recalibrate_and_run(
 
 def run_pipeline(
     image_path: str,
-    params: CameraParams,
-    expected_well_count: int,
-    vlm_model: str = DEFAULT_VLM_MODEL,
-    vlm_api_key: str | None = None,
-) -> tuple[list[tuple[int, int, int]], CameraParams]:
+    well_ids: list[str],
+    config: ImageConfig = DEFAULT_CONFIG,
+    warped_save_path: str | None = None,
+    roi_debug_save_path: str | None = None,
+) -> dict[str, tuple[int, int, int]]:
     """
-    Run the full three-level pipeline for one iteration.
+    Run the full image processing pipeline for one captured image.
 
-    Crops the wellplate from the raw image, perspective-corrects the crop,
-    extracts ROI patches for every well, and returns mean RGB per well.
-    The caller selects the specific well indices that correspond to dispensed mixes.
+    Steps:
+        1. Load raw image and compute homography.
+        2. Apply cv2.warpPerspective → flat plate image.
+        3. Compute grid cell dimensions from the plate image.
+        4. Slice grid into per-well ROI patches (all wells).
+        5. Save ROI debug overlay (red rectangles + well ID + W×H per cell).
+        6. Extract median RGB for each requested well_id.
+        7. Validate results.
 
-    Level 1 uses cached CameraParams — no VLM call unless camera has shifted.
-    Returns updated CameraParams so the caller can detect if re-calibration occurred.
+    Saved files (paths auto-derived from image_path if not supplied):
+        <name>_warped.jpg     — homography-corrected flat plate image.
+        <name>_roi_debug.jpg  — debug overlay with red ROI boxes and labels.
 
     Args:
-        image_path: Path to the full raw deck image captured this iteration.
-        params: CameraParams from calibrate_camera() or a previous run_pipeline().
-        expected_well_count: Total number of wells on the plate (e.g. 96 for a
-                             96-well plate). Used to validate extracted patch count.
-        vlm_model: OpenRouter model identifier.
-        vlm_api_key: OpenRouter API key (optional, falls back to env var).
+        image_path:          Path to the raw captured deck image.
+        well_ids:            Well IDs to extract RGB for, e.g. ["A1","A2","A3"].
+        config:              ImageConfig. Defaults to DEFAULT_CONFIG.
+        warped_save_path:    Optional path for the warped image.
+        roi_debug_save_path: Optional path for the ROI debug overlay.
 
     Returns:
-        (rgb_values, params) — rgb_values is a list of (R, G, B) tuples, one per
-        well in row-major order. params is unchanged unless re-calibration occurred.
+        {"A1": (R, G, B), "A2": (R, G, B), ...}
 
     Raises:
-        RuntimeError: If all three pipeline levels fail.
+        FileNotFoundError: If image_path does not exist.
+        RuntimeError: If homography fails or RGB validation fails.
     """
-    # Level 1: use cached params — no VLM call
-    patches, rgb_values = run_level1(image_path, params)
+    base, ext = os.path.splitext(image_path)
+    ext = ext or ".jpg"
 
-    # Level 2: validate
-    passed, failures = validate_results(patches, rgb_values, expected_well_count)
-    if passed:
-        return rgb_values, params
+    # Step 1 & 2: Load → homography → warp
+    raw_bgr = cv2.imread(image_path)
+    if raw_bgr is None:
+        raise FileNotFoundError(f"Image not found or unreadable: {image_path}")
+    raw_np = cv2.cvtColor(raw_bgr, cv2.COLOR_BGR2RGB)
 
-    # Level 3a: retry Level 1 with same params (transient noise)
-    try:
-        patches, rgb_values = run_level1(image_path, params)
-        passed, failures = validate_results(patches, rgb_values, expected_well_count)
-        if passed:
-            return rgb_values, params
-    except Exception:
-        pass
+    H = compute_homography(config.src_corners, config.dst_corners)
+    plate_np = apply_warp(raw_np, H, config.output_size)
 
-    # Level 3b: camera may have shifted — re-calibrate via VLM
-    try:
-        patches, rgb_values, new_params = recalibrate_and_run(
-            image_path, expected_well_count, vlm_model, vlm_api_key
-        )
-        passed, failures = validate_results(patches, rgb_values, expected_well_count)
-        if passed:
-            return rgb_values, new_params
-    except Exception:
-        pass
+    if warped_save_path is None:
+        warped_save_path = f"{base}_warped{ext}"
+    Image.fromarray(plate_np).save(warped_save_path)
 
-    raise RuntimeError(
-        f"All three pipeline levels failed. Final failures: {failures}. "
-        "Save the raw image and report to the user for manual inspection."
+    # Step 3 & 4: Grid dimensions + ROI slice
+    cell_w, cell_h = get_grid_dimensions(plate_np, config.col_num, config.row_num)
+    patches, roi_boxes = slice_roi_patches(
+        plate_np, config.col_num, config.row_num, config.offset_array
     )
+
+    # Step 5: ROI debug overlay
+    if roi_debug_save_path is None:
+        roi_debug_save_path = f"{base}_roi_debug{ext}"
+    save_roi_debug_image(
+        plate_np, roi_boxes, roi_debug_save_path, config.col_num, config.row_num
+    )
+
+    # Step 6: RGB extraction
+    rgb_values = extract_well_rgb(patches, well_ids, config.col_num)
+
+    # Step 7: Validate
+    passed, failures = validate_results(rgb_values)
+    if not passed:
+        raise RuntimeError(
+            f"RGB validation failed: {failures}. "
+            f"Inspect {roi_debug_save_path} to verify ROI grid alignment."
+        )
+
+    return rgb_values
