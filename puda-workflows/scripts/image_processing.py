@@ -83,7 +83,7 @@ DEFAULT_CONFIG = ImageConfig(
     plate_height=400,
     col_num=12,    # columns 1–12, left → right
     row_num=8,     # rows A–H, top → bottom
-    offset_array=[[24, 24], [24, 24]],
+    offset_array=[[18, 18], [18, 18]],
 )
 
 
