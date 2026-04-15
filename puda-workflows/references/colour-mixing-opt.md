@@ -246,6 +246,9 @@ On stop: generate a final summary report and save it to `logs/colour-mixing-repo
 - Always ask for target colour, RMSE threshold, and max iterations **before** starting.
 - Always collect **three separate deck slots** for R, G, and B dye source labware before any `load_labware` for those sources; never use one slot for all three.
 - Always ask the user for explicit confirmation after all required inputs are collected and validated, before the first protocol is generated or executed.
+- Never ask the user to paste API keys, tokens, passwords, or other secrets into chat.
+- If `LLM` optimization requires credentials such as `OPENROUTER_API_KEY`, require them to be pre-configured in the local environment outside the chat before running.
+- If the required LLM credential is missing, stop and tell the user to set it locally, but do not ask them to reveal the secret value and do not write the secret into prompts, config files, protocol files, or shell commands.
 - Never assume volume ratios — they must come from the optimizer at each iteration.
 - Image names must follow `colour-RGB-<Sample name that user input>-<N>.jpg` exactly, where `<N>` is the run number and increments on every run.
 - Protocol must always end with no tip attached (Opentrons sequencing rule).

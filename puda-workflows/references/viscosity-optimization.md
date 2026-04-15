@@ -45,7 +45,8 @@ Collect all of the following before starting. Do not proceed until every value i
 |---|---|
 | Optimization approach | `bayes_lcb`, `bayes_ei`, or `llm` |
 | If LLM: OpenRouter model ID | e.g. `"openai/gpt-4o"` |
-| If LLM: OpenRouter API key | `sk-or-...` |
+
+If `llm` is selected, any required credential such as `OPENROUTER_API_KEY` must already be configured in the local environment outside the chat before running the workflow. Do not ask the user to paste the API key into chat.
 
 **b) Sample and volumes**
 
@@ -241,6 +242,9 @@ exp.run()
 - Always confirm OT-2 IP and balance serial port (`/dev/ttyUSB*` or `/dev/ttyACM*`) **before** generating any protocol.
 - Never add `load_labware` or `load_instrument` to `protocol_steps` — they are auto-injected.
 - Balance edge service (`uv run --package balance-edge python edge/balance.py`) **must be running** before connecting.
+- Never ask the user to paste API keys, tokens, passwords, or other secrets into chat.
+- If `llm` optimization requires credentials such as `OPENROUTER_API_KEY`, require them to be pre-configured in the local environment outside the chat before running.
+- If the required LLM credential is missing, stop and tell the user to set it locally, but do not ask them to reveal the secret value and do not write the secret into prompts, config files, protocol files, or shell commands.
 - Only use `get_mass()["mass_g"]` where `fresh == True` — discard stale readings (age ≥ 5 s).
 - Call `driver.tare(wait=2.0)` at the start of each iteration before running the protocol.
 - Call `driver.shutdown()` after all iterations are complete to close the serial port cleanly.
