@@ -46,7 +46,6 @@ row H   H1      H2         H12     ← bottom-left to bottom-right
 | `dst_corners` | `list[(x,y)]` × 4 | Destination rectangle in the **output** image [TL, TR, BR, BL]. Typically `[(0,0),(W,0),(W,H),(0,H)]`. |
 | `plate_width` | int | Width in pixels of the warped output image. |
 | `plate_height` | int | Height in pixels of the warped output image. |
-| `crop_box` | `(x1,y1,x2,y2)` or `None` | User-hardcoded crop applied **after** warp to isolate the wellplate from surrounding deck area. This is manually calibrated, not auto-detected. `None` = skip (default). |
 | `col_num` | int | Grid columns — `12` for plate columns 1–12 (left → right). |
 | `row_num` | int | Grid rows — `8` for plate rows A–H (top → bottom). |
 | `offset_array` | `[[xl,xr],[yt,yb]]` | Pixel inset per grid cell — keeps ROI inside the well, away from the rim. |
@@ -57,21 +56,14 @@ row H   H1      H2         H12     ← bottom-left to bottom-right
 
 ```python
 DEFAULT_CONFIG = ImageConfig(
-    src_corners=[(293, 268), (394, 268), (394, 338), (293, 336)],
+    src_corners=[(293, 271), (394, 271), (394, 338), (293, 338)],
     dst_corners=[(0, 0), (600, 0), (600, 400), (0, 400)],
     plate_width=600,
     plate_height=400,
     col_num=12,    # columns 1–12, left → right
     row_num=8,     # rows A–H, top → bottom
-    offset_array=[[25, 25], [25, 25]],
-    crop_box=(208, 207, 399, 302), # user-hardcoded crop in warped-image pixels
+    offset_array=[[18, 18], [18, 18]],
 )
-```
-
-Current default crop:
-
-```python
-crop_box = (208, 207, 399, 302)
 ```
 
 ---
@@ -105,14 +97,14 @@ cell_w, cell_h = get_grid_dimensions(plate_np, col_num=12, row_num=8)
 # e.g. cell_w = 600/12 = 50.0 px,  cell_h = 400/8 = 50.0 px
 ```
 
-Divides the plate image dimensions by the grid counts to get the floating-point size of each well cell. Used by both `slice_roi_patches` and `crop_well`.
+Divides the warped plate image dimensions by the grid counts to get the floating-point size of each well cell. Used by both `slice_roi_patches` and `crop_well`.
 
 ---
 
 ## Step 4 — ROI Grid Slicing
 
 ```
-plate image  →  slice_roi_patches(plate, 12, 8, offset_array)  →  96 patches + 96 boxes
+warped plate image  →  slice_roi_patches(plate, 12, 8, offset_array)  →  96 patches + 96 boxes
 ```
 
 Each cell is shrunk inward by `offset_array` so the ROI sits inside the well and avoids the rim. Patches are in row-major order: A1, A2, …, A12, B1, …, H12.
@@ -127,20 +119,19 @@ Each cell is shrunk inward by `offset_array` so the ROI sits inside the well and
 
 After slicing, `save_roi_debug_image()` draws a **red rectangle** at every ROI patch and labels it with:
 - **Well ID** (e.g. `A1`)
-- **Patch size** (e.g. `82×138`)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  A1 82×138  A2 82×138  A3 82×138  …  A12 82×138            │
-│  B1 82×138  B2 82×138  …                                    │
+│  A1  A2  A3  …  A12                                        │
+│  B1  B2  …                                                 │
 │  …                                                          │
-│  H1 82×138  …          H12 82×138                           │
+│  H1  …          H12                                         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 Saved as `<name>_roi_debug.jpg`.
 
-**When RGB results look wrong, inspect this image first.** Misaligned rectangles mean `src_corners`, `offset_array`, or the user-hardcoded `crop_box` need adjusting.
+**When RGB results look wrong, inspect this image first.** Misaligned rectangles mean `src_corners` or `offset_array` need adjusting.
 
 ---
 
@@ -176,8 +167,7 @@ rgb_values = run_pipeline(
 | File | Description |
 |---|---|
 | `<name>_warped.jpg` | Full perspective-corrected image (always saved) |
-| `<name>_cropped.jpg` | Wellplate crop — only saved when `crop_box` is set |
-| `<name>_roi_debug.jpg` | Red ROI rectangles + well ID + `W×H` label at every well |
+| `<name>_roi_debug.jpg` | Red ROI rectangles + well ID label at every well |
 
 ### Re-calibrating `src_corners`
 
@@ -194,13 +184,7 @@ src_corners = [
 
 `plate_width` and `plate_height` set the output resolution — increase them for higher-resolution ROI patches.
 
-`DEFAULT_CONFIG` currently uses this hardcoded crop in warped-image pixel coordinates:
-
-```python
-crop_box = (208, 207, 399, 302)
-```
-
-Change this manually in `ImageConfig` if your camera position or framing changes. The pipeline does not estimate it automatically.
+The warped image is used directly for ROI extraction. If alignment changes, recalibrate `src_corners`, `plate_width`, `plate_height`, or `offset_array`.
 
 ---
 

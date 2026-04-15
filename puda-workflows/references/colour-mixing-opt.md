@@ -90,6 +90,14 @@ Do not generate the initial protocol until the user confirms that the full setup
 **Step 2 — Initial mixes (`x_init`)**
 Generate a single protocol that dispenses all 3 initial volume combinations into 3 separate wells (e.g. A1, A2, A3) and execute it on the Opentrons. Record which well received which `(R_vol, G_vol, B_vol)` set.
 
+Tip usage must advance in row-major order on the tip rack:
+
+```text
+A1, A2, A3, ... A12, B1, B2, ... H12
+```
+
+For the first iteration, start from `A1` and continue to the next available tip for every later `pick_up_tip` call. Do not restart from `A1`, `B1`, or `C1` on later iterations.
+
 **Step 3 — Capture whole-wellplate image**
 After the protocol completes (all 3 mixes dispensed), use `camera_capture` **once** to capture the entire wellplate showing the whole wellplate with 3 mixed colours. Save the image as:
 ```
@@ -102,23 +110,22 @@ Base-colour-RGB-exp-<N>.jpg
 **Step 3a — Image processing (every iteration)**
 The image processing pipeline uses fixed, calibrated parameters — no VLM is needed. Call `run_pipeline()` on the captured image. The steps run in this exact order:
 1. Apply fixed perspective correction using calibrated `src_corners` and `dst_corners` → flat deck image
-2. Crop the corrected image using user-hardcoded `crop_box=(208, 207, 399, 302)` → cropped wellplate image
-3. Slice the cropped image into a `row_num × col_num` ROI grid (one patch per well)
-4. Compute median RGB for each requested well by `well_id`
+2. Slice the warped plate image into a `row_num × col_num` ROI grid (one patch per well)
+3. Compute median RGB for each requested well by `well_id`
 
-All parameters are stored in `DEFAULT_CONFIG` in `image_processing.py`. Re-calibrate only if the camera is physically moved. The crop box is manually hardcoded by the user, not auto-detected. See [image-processing.md](image-processing.md) for the full field reference.
+All parameters are stored in `DEFAULT_CONFIG` in `image_processing.py`. Re-calibrate only if the camera is physically moved. See [image-processing.md](image-processing.md) for the full field reference.
 
 ---
 
 ### Phase 2 — Per-Iteration Loop
 
 **Step 4 — Image processing**
-Call `run_pipeline(image_path, well_ids, config=DEFAULT_CONFIG)` on the captured image. The pipeline uses fixed calibrated parameters for perspective correction, the user-hardcoded crop box, and ROI slicing, so no VLM or re-calibration is required each iteration.
+Call `run_pipeline(image_path, well_ids, config=DEFAULT_CONFIG)` on the captured image. The pipeline uses fixed calibrated parameters for perspective correction and ROI slicing, so no VLM or re-calibration is required each iteration.
 
 See [image-processing.md](image-processing.md).
 
 **Step 5 — ROI extraction for all wells**
-Slice the cropped wellplate image into one ROI patch per well, in row-major order (left to right, top to bottom). This covers every well on the plate regardless of whether it has a mix or is empty.
+Slice the warped plate image into one ROI patch per well, in row-major order (left to right, top to bottom). This covers every well on the plate regardless of whether it has a mix or is empty.
 
 **Step 6 — RGB extraction from active wells**
 Compute the median RGB for each extracted ROI patch. Then select the RGB values for the wells that contain the mixes (by `well_id`, derived from the protocol's well assignments):
@@ -152,6 +159,8 @@ Append one block to `logs/colour-mixing-report.md` after every iteration:
 | Iteration | <N> |
 | Image saved | Base-colour-RGB-exp-<N>.jpg |
 | Target colour RGB | (<R_target>, <G_target>, <B_target>) |
+| Last tip used | <tip_well> |
+| Next tip to use | <tip_well> |
 | Next suggested ratio (R, G, B) | (<R_next> µL, <G_next> µL, <B_next> µL) |
 | Stop condition reached | Yes / No |
 
@@ -165,7 +174,19 @@ Append one block to `logs/colour-mixing-report.md` after every iteration:
 For the 3 initial mixes the "Wells processed" table will have 3 rows (one per initial mix well). For subsequent iterations it will have 1 row (the single new mix well).
 
 **Step 11 — Generate and execute protocol**
-Use **puda-protocol** to generate a new protocol with the suggested volumes and execute it on the Opentrons. Then repeat from Step 3.
+Use **puda-protocol** to generate a new protocol with the suggested volumes and execute it on the Opentrons. The protocol must resume tip pickup from the next unused tip after the previous iteration's last tip.
+
+Tip selection must be continuous across iterations in row-major order:
+
+```text
+A1, A2, A3, ... A12, B1, B2, ... H12
+```
+
+Example:
+- If iteration 1 ends on `A3`, iteration 2 must start from `A4`
+- If iteration 2 ends on `A4`, iteration 3 must start from `A5`
+
+Do not restart tip pickup from `A1`, `B1`, or `C1` unless a brand-new tip rack is explicitly loaded and confirmed.
 
 ---
 
@@ -185,7 +206,9 @@ On stop: generate a final summary report and save to `logs/`.
 - Always ask for target colour, RMSE threshold, and max iterations **before** starting.
 - Always collect **three separate deck slots** for R, G, and B dye source labware before any `load_labware` for those sources; never use one slot for all three.
 - Always ask the user for explicit confirmation after all required inputs are collected and validated, before the first protocol is generated or executed.
-- Always ask the user for explicit confirmation before executing any later optimizer-suggested mix.
+- Always use sequential tip positions in row-major order: `A1, A2, ... A12, B1, ... H12`.
+- Always continue from the next unused tip position after the last iteration; never restart tip pickup from the beginning of the rack unless the user explicitly resets or replaces the tip rack.
+- Always record the last tip used and the next tip to use in the iteration report so the next protocol can resume correctly.
 - Never assume volume ratios — they must come from the optimizer at each iteration.
 - Image names must follow `Base-colour-RGB-exp-<N>.jpg` exactly.
 - Protocol must always end with no tip attached (Opentrons sequencing rule).
