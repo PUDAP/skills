@@ -129,9 +129,9 @@ For the initial `x_init` protocol, start from `A1` and continue in row-major ord
 **Step 3 — Capture whole-wellplate image**
 After the protocol completes (all 3 mixes dispensed), use `camera_capture` **once** to capture the entire wellplate showing the whole wellplate with 3 mixed colours. Save the image as:
 ```
-Base-colour-RGB-exp-<Sample name that user input>.jpg
+colour-RGB-<Sample name that user input>-<N>.jpg
 ```
-Use the exact sample name provided by the user in the filename.
+Use the exact sample name provided by the user in the filename. `<N>` is the run number and must increment for every new run so images never overwrite earlier files.
 
 > **Important**: Capture ONE image after the `x_init` protocol is dispensed, and then ONE image after each later optimization iteration — not one image per mix.
 
@@ -192,7 +192,7 @@ Example `x_init` log block:
 
 | Field | Value |
 |---|---|
-| Image saved | Base-colour-RGB-exp-<Sample name that user input>.jpg |
+| Image saved | colour-RGB-<Sample name that user input>-<N>.jpg |
 | Target colour RGB | (<R_target>, <G_target>, <B_target>) |
 | Last tip used | <tip_well> |
 | Next tip to use | <tip_well> |
@@ -210,7 +210,7 @@ Example `x_init` log block:
 | Field | Value |
 |---|---|
 | Iteration | <N> |
-| Image saved | Base-colour-RGB-exp-<Sample name that user input>.jpg |
+| Image saved | colour-RGB-<Sample name that user input>-<N>.jpg |
 | Target colour RGB | (<R_target>, <G_target>, <B_target>) |
 | Last tip used | <tip_well> |
 | Next tip to use | <tip_well> |
@@ -263,7 +263,7 @@ On stop: generate a final summary report and save it to `logs/colour-mixing-repo
 - Always continue from the next unused tip position after the last iteration; never restart tip pickup from the beginning of the rack unless the user explicitly resets or replaces the tip rack.
 - Always record the last tip used and the next tip to use in the iteration report so the next protocol can resume correctly.
 - Never assume volume ratios — they must come from the optimizer at each iteration.
-- Image names must follow `Base-colour-RGB-exp-<Sample name that user input>.jpg` exactly.
+- Image names must follow `colour-RGB-<Sample name that user input>-<N>.jpg` exactly, where `<N>` is the run number and increments on every run.
 - Protocol must always end with no tip attached (Opentrons sequencing rule).
 - Invoke **puda-memory** after every protocol creation and run.
 - **If unsure about any input, parameter, or decision — ask the user. Do not assume.**
