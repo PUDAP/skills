@@ -1,11 +1,11 @@
 ---
 name: colour-mixing-opt
-description: Optimize colour mixing on an Opentrons OT-2 to match a target colour by minimizing RMSE through Bayesian Optimization or LLM feedback, using camera capture and deterministic image processing.
+description: Iteratively mix RGB colours on an Opentrons OT-2 and minimize RMSE between the mixed colour and a target colour using real-time camera feedback and BO or LLM optimization.
 ---
 
 # Colour Mixing Optimization
 
-Iteratively mix RGB colours on an Opentrons OT-2 and minimize RMSE between the mixed colour and a target colour using real-time camera feedback and BO or LLM optimization.
+description: Iteratively mix RGB colours on an Opentrons OT-2 and minimize RMSE between the mixed colour and a target colour using real-time camera feedback and BO or LLM optimization.
 
 ## Required Skills
 
@@ -17,6 +17,13 @@ Invoke these skills before generating any commands:
 ## Required Machine
 
 - **Opentrons OT-2** with camera attached (`machine_id: "opentrons"`)
+
+## Core Principle 
+The system must operate in a strict single-run, sequential execution loop.
+At any time:
+- Only **One active run** is allowed 
+- Each iteration sues a **NEW run_id**
+-No downstream step executres unless the run is **confirmed successful**
 
 ## Optimization Approaches
 
@@ -33,6 +40,27 @@ See [optimization.md](optimization.md) for implementation details.
 
 ## Workflow
 
+### Phase 0 — Run Lifecycle Safety
+
+This applies to every iteration.
+
+Mandatory Rules
+-Always create a new run per protocol
+-Never reuse run_id
+-Never send play twice on same run
+-Never start a run if another run is active
+-Always poll until run reaches terminal state: successded, failed or stopped 
+
+Hard Gate Condition
+
+Proceed ONLY IF:
+run.status == "succeeded"
+
+Otherwise:
+-STOP optimization loop
+-Log failure
+-Require recovery before continuing
+
 ### Phase 1 — Initialization
 
 **Step 1 — Inputs (ask user before proceeding)**
@@ -41,6 +69,7 @@ Collect all of the following before starting. Do not proceed until every value i
 
 | Input | Description |
 |---|---|
+| Sample name | User-provided sample name to use in saved image filenames |
 | Target colour | `(R, G, B)` where each value is 0–255 |
 | Total well volume | Total volume in µL per well (e.g. 300 µL) |
 | **R dye source — deck slot** | OT-2 deck slot (`"1"`–`"11"`) for the labware holding **red** dye only |
@@ -60,30 +89,22 @@ When generating protocols, map aspirate sources to the user’s **R slot / G slo
 **`x_init` — Initial volume inputs**
 
 Ask the user to provide exactly 3 initial volume combinations for R, G, B dye in µL. Each set must sum to the total well volume.
-
-Example prompt to the user:
-```
-Please provide 3 initial (R_vol, G_vol, B_vol) combinations in µL.
-Each must sum to <total_volume> µL.
-
-Mix 1: R_vol = ?, G_vol = ?, B_vol = ?
-Mix 2: R_vol = ?, G_vol = ?, B_vol = ?
-Mix 3: R_vol = ?, G_vol = ?, B_vol = ?
-```
-
 Validate each set before generating the protocol — reject and re-ask if any set does not sum to `total_volume` (±1 µL tolerance).
 
 **Step 1a — User confirmation before execution**
-After all inputs have been collected and validated, present a single summary back to the user and ask for explicit confirmation before generating or executing any protocol.
+After all inputs have been collected and validated, present a single summary back to the user that also states the labware positions, and ask for explicit confirmation before generating or executing any protocol.
 
 The confirmation summary must include:
+- Sample name
 - Target colour
 - Total well volume
+- Labware positions
 - R / G / B source deck slots
 - All 3 `x_init` volume combinations
 - Optimization approach
 - RMSE threshold
 - Maximum iterations
+
 
 Do not generate the initial protocol until the user confirms that the full setup is correct.
 
@@ -95,19 +116,26 @@ Tip usage must advance in row-major order on the tip rack:
 ```text
 A1, A2, A3, ... A12, B1, B2, ... H12
 ```
-
-For the first iteration, start from `A1` and continue to the next available tip for every later `pick_up_tip` call. Do not restart from `A1`, `B1`, or `C1` on later iterations.
+**Execution Sequence (MUST FOLLOW EXACTLY)**
+1. Upload protocol
+2. Create run -> store `run_id`
+3. Verify:
+   - No active run
+   - Robot not in error state
+4. Start run (`play`)
+5. Poll run status until terminal
+For the initial `x_init` protocol, start from `A1` and continue in row-major order: `A1`, `A2`, ... `A12`, then `B1`, `B2`, and so on. After `x_init`, do not restart from `A1`, `A2`, or any earlier tip position during later optimization iterations.
 
 **Step 3 — Capture whole-wellplate image**
 After the protocol completes (all 3 mixes dispensed), use `camera_capture` **once** to capture the entire wellplate showing the whole wellplate with 3 mixed colours. Save the image as:
 ```
-Base-colour-RGB-exp-<N>.jpg
+Base-colour-RGB-exp-<Sample name that user input>.jpg
 ```
-`<N>` increments from 1 for each iteration.
+Use the exact sample name provided by the user in the filename.
 
-> **Important**: Capture ONE image per iteration after ALL mixes for that iteration are dispensed — not one image per mix.
+> **Important**: Capture ONE image after the `x_init` protocol is dispensed, and then ONE image after each later optimization iteration — not one image per mix.
 
-**Step 3a — Image processing (every iteration)**
+**Step 3a — Image processing (`x_init` and every optimization iteration)**
 The image processing pipeline uses fixed, calibrated parameters — no VLM is needed. Call `run_pipeline()` on the captured image. The steps run in this exact order:
 1. Apply fixed perspective correction using calibrated `src_corners` and `dst_corners` → flat deck image
 2. Slice the warped plate image into a `row_num × col_num` ROI grid (one patch per well)
@@ -120,7 +148,7 @@ All parameters are stored in `DEFAULT_CONFIG` in `image_processing.py`. Re-calib
 ### Phase 2 — Per-Iteration Loop
 
 **Step 4 — Image processing**
-Call `run_pipeline(image_path, well_ids, config=DEFAULT_CONFIG)` on the captured image. The pipeline uses fixed calibrated parameters for perspective correction and ROI slicing, so no VLM or re-calibration is required each iteration.
+Call `run_pipeline(image_path, well_ids, config=DEFAULT_CONFIG)` on the captured image. The pipeline uses fixed calibrated parameters for perspective correction and ROI slicing.
 
 See [image-processing.md](image-processing.md).
 
@@ -149,7 +177,32 @@ Pass all `(volume_ratios, RMSE)` pairs (one per active well) to the chosen optim
 The optimizer returns the next `(R_vol, G_vol, B_vol)` to try.
 
 **Step 10 — Iteration report**
-Append one block to `logs/colour-mixing-report.md` after every iteration:
+For each new set of optimization, create a new report file named `logs/colour-mixing-report-<sample name that user input>.md`. Do not count the 3 `x_init` mixes as iterations. First, append one `x_init` log block to that report file after the initial protocol finishes, then start iteration counting from the first parameter set suggested by BO or LLM and append one block after every optimization iteration.
+
+The `x_init` log block must record:
+- RMSE for all 3 initial mixes
+- Last tip used
+- Next tip to use
+- The 3 initial volume ratios and measured RGB values
+
+Example `x_init` log block:
+
+```markdown
+## x_init
+
+| Field | Value |
+|---|---|
+| Image saved | Base-colour-RGB-exp-<Sample name that user input>.jpg |
+| Target colour RGB | (<R_target>, <G_target>, <B_target>) |
+| Last tip used | <tip_well> |
+| Next tip to use | <tip_well> |
+
+### Wells processed in x_init
+
+| Well | Volume ratio (R, G, B µL) | Mixed colour RGB | RMSE |
+|---|---|---|---|
+| <well_id> | (<R_vol>, <G_vol>, <B_vol>) | (<R_mix>, <G_mix>, <B_mix>) | <value> |
+```
 
 ```markdown
 ## Iteration <N>
@@ -157,7 +210,7 @@ Append one block to `logs/colour-mixing-report.md` after every iteration:
 | Field | Value |
 |---|---|
 | Iteration | <N> |
-| Image saved | Base-colour-RGB-exp-<N>.jpg |
+| Image saved | Base-colour-RGB-exp-<Sample name that user input>.jpg |
 | Target colour RGB | (<R_target>, <G_target>, <B_target>) |
 | Last tip used | <tip_well> |
 | Next tip to use | <tip_well> |
@@ -171,7 +224,7 @@ Append one block to `logs/colour-mixing-report.md` after every iteration:
 | <well_id> | (<R_vol>, <G_vol>, <B_vol>) | (<R_mix>, <G_mix>, <B_mix>) | <value> |
 ```
 
-For the 3 initial mixes the "Wells processed" table will have 3 rows (one per initial mix well). For subsequent iterations it will have 1 row (the single new mix well).
+The 3 initial `x_init` mixes are seed observations, not iterations, so they should not be written as `Iteration <N>` blocks. However, their RMSE values, last tip used, next tip to use, and well data must still be recorded in the `x_init` log block. Each optimization iteration block should have 1 row in "Wells processed" for the single BO/LLM-suggested mix.
 
 **Step 11 — Generate and execute protocol**
 Use **puda-protocol** to generate a new protocol with the suggested volumes and execute it on the Opentrons. The protocol must resume tip pickup from the next unused tip after the previous iteration's last tip.
@@ -183,8 +236,8 @@ A1, A2, A3, ... A12, B1, B2, ... H12
 ```
 
 Example:
-- If iteration 1 ends on `A3`, iteration 2 must start from `A4`
-- If iteration 2 ends on `A4`, iteration 3 must start from `A5`
+- After the initial `x_init` protocol uses `A1`, `A2`, and `A3`, iteration 1 must start from `A4`
+- If iteration 1 ends on `A4`, iteration 2 must start from `A5`
 
 Do not restart tip pickup from `A1`, `B1`, or `C1` unless a brand-new tip rack is explicitly loaded and confirmed.
 
@@ -197,9 +250,9 @@ Stop when **either** is met:
 | Condition | Description |
 |---|---|
 | `RMSE ≤ threshold` | Target colour matched within acceptable error |
-| `iteration ≥ max_iter` | Maximum iterations reached |
+| `iteration ≥ max_iter` | Maximum optimization iterations reached (not counting the 3 `x_init` mixes) |
 
-On stop: generate a final summary report and save to `logs/`.
+On stop: generate a final summary report and save it to `logs/colour-mixing-report-<sample name that user input>.md`.
 
 ## Rules
 
@@ -210,7 +263,7 @@ On stop: generate a final summary report and save to `logs/`.
 - Always continue from the next unused tip position after the last iteration; never restart tip pickup from the beginning of the rack unless the user explicitly resets or replaces the tip rack.
 - Always record the last tip used and the next tip to use in the iteration report so the next protocol can resume correctly.
 - Never assume volume ratios — they must come from the optimizer at each iteration.
-- Image names must follow `Base-colour-RGB-exp-<N>.jpg` exactly.
+- Image names must follow `Base-colour-RGB-exp-<Sample name that user input>.jpg` exactly.
 - Protocol must always end with no tip attached (Opentrons sequencing rule).
 - Invoke **puda-memory** after every protocol creation and run.
 - **If unsure about any input, parameter, or decision — ask the user. Do not assume.**
