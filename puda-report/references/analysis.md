@@ -38,7 +38,7 @@ Create an **analysis/** folder inside the experiment folder if missing. Keep all
 ### 3. Generate python file
 
 1. Use the schema from step 1 to write valid SQL queries. Prefer a single clear SQL query that selects only the columns and data needed.
-2. **biologic**: data is in the `payload` column at `payload["response"]["data"]`; parse JSON and use that path for analysis.
+2. Response data for any command will always be in `payload` column at `payload["response"]["data"]`
 
 ```python
 import json
@@ -64,7 +64,7 @@ data = json.loads(row["payload"])["response"]["data"]
 Continue the script from the loaded data (SQL result or parsed payload): apply pandas for analysis and matplotlib for plotting as requested.
 
 - **Analysis**: Use pandas for filtering, grouping, aggregations, time series, etc., according to what the user asked for.
-- **Plotting**: Use matplotlib. Choose chart types that match the question (e.g. time series → line plot, distributions → histograms, categories → bar charts).
+- **Plotting**: Use matplotlib. If the data schema is unclear, run `puda machine commands <machine_id> | grep -A 50 "<command_name>"` to inspect the command's output structure. If the user hasn't specified a chart type, choose one that best fits the data.
 
 ## Instructions summary
 
