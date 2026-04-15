@@ -152,12 +152,12 @@ Uses **median** per channel to suppress outlier pixels (dust, reflections, bubbl
 from image_processing import run_pipeline, DEFAULT_CONFIG
 
 rgb_values = run_pipeline(
-    image_path="Base-colour-RGB-exp-1.jpg",
+    image_path="colour-RGB-blue_sample-1.jpg",
     well_ids=["A1", "A2", "A3"],
     config=DEFAULT_CONFIG,
     # optional — auto-derived from image_path if omitted:
-    # warped_save_path="Base-colour-RGB-exp-1_warped.jpg",
-    # roi_debug_save_path="Base-colour-RGB-exp-1_roi_debug.jpg",
+    # warped_save_path="colour-RGB-blue_sample-1_warped.jpg",
+    # roi_debug_save_path="colour-RGB-blue_sample-1_roi_debug.jpg",
 )
 # → {"A1": (210, 45, 30), "A2": (30, 190, 55), "A3": (20, 40, 200)}
 ```
