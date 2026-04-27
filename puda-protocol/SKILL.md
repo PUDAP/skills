@@ -11,7 +11,7 @@ description: Protocol creation for PUDA. Use when doing anything related to PUDA
 
 ## Protocol Structure
 
-A single protocol can contain commands for **multiple machines**. Each command specifies its own `machine_id`. Step numbers are sequential across all commands regardless of machine.
+A single protocol can contain commands for **multiple machines**. Each command specifies its own `machine_id`. Step numbers are sequential execution groups across all commands. If commands are meant to be executed in parallel, use the same `step_number`; however, `machine_id` cannot be repeated within the same parallel command group.
 
 Top-level fields:
 - `project_id`: UUID from **project.md** in the project root
@@ -22,7 +22,7 @@ Top-level fields:
 - `commands`: Array of command objects (see below)
 
 Each command:
-- `step_number`: Sequential integer from 1 (across all commands)
+- `step_number`: Sequential integer from 1; commands with the same value execute in parallel
 - `name`: Valid command name for the specified machine
 - `machine_id`: Target machine id
 - `params`: Required and optional parameters for the command
@@ -68,6 +68,6 @@ Each command: `step_number`, `name`, `machine_id`, `params`
 
 ## Best Practices
 
-- Multi-machine: each command must have the correct `machine_id`; steps stay sequential (1, 2, 3, …).
+- Multi-machine: each command must have the correct `machine_id`; use the same `step_number` only for parallel commands, and do not repeat a `machine_id` in the same step.
 - Always validate after creating; fix any errors before sending.
 - After writing the file, **always** call **puda-memory** to update `project.md`.
