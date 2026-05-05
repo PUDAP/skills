@@ -15,8 +15,6 @@ Only after the CLI is installed and the project is initialized, proceed with pro
 
 ```text
 .
-├── .agents/                          # puda agent skills (from `puda skills install`)
-├── logs/                             # log files from runs
 ├── project.md                        # single source of truth (puda-memory skill)
 ├── protocols/                        # generated protocol files (puda-protocol skill)
 ├── puda.config                       # puda config file
