@@ -3,7 +3,7 @@ name: puda
 description: Setup puda project, CLI installation, and project/experiment structure. Use when initializing a Puda project, puda experiment, or when updating skills is needed
 ---
 ## Setting up new puda project
-1. **Check installation**: Determine how to invoke the CLI — use `puda` if installed globally, or from the project root use `./puda` on Unix/macOS or `.\puda.exe` on Windows if only a local binary exists. If it's missing, direct the user to the [Puda releases page](https://github.com/PUDAP/puda/releases). Use that same invocation (`puda`, `./puda`, or `.\puda.exe`) consistently in all steps below.
+1. **Check installation**: Determine how to invoke the CLI — use `puda` if installed globally, or from the project root use `puda` on Unix/macOS or `.\puda.exe` on Windows if only a local binary exists. If it's missing, direct the user to the [Puda releases page](https://github.com/PUDAP/puda/releases). Use that same invocation (`puda`, `./puda`, or `.\puda.exe`) consistently in all steps below.
 2. **Ensure Python and pip**: Ensure `python3` and `pip` are available; install them first if missing. 
 3. **Login**: Log in to puda with `puda login -u <username>`;
 4. **New project folder**: run `puda init` (e.g. `puda init .` or `puda init <folder_name>`).
