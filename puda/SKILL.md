@@ -1,7 +1,16 @@
 ---
 name: puda
-description: Set up the PUDA CLI and initialize projects. Covers CLI installation, dependencies, login, NATS config, skills install/update, and project folder structure. Use when setting up PUDA, initializing a new project, or updating installed skills.
+description: Use when introducing PUDA, setting up the PUDA CLI, initializing a project, or updating installed PUDA skills.
 ---
+
+## PUDA context
+
+PUDA, the Physical Unified Device Architecture, is a hardware-agnostic and LLM-agnostic runtime for Physical AI. It gives AI agents and software systems a unified, verifiable control plane for physical machines by separating high-level agent logic from low-level machine execution.
+
+At a high level, PUDA uses a message-driven architecture built around NATS, a CLI-first interface for agents and humans, declarative protocols for experiment or workflow execution, edge services that translate commands into native machine driver calls, and project records that preserve command/data provenance. Treat PUDA as the agent-native bridge between planning, machine control, execution logs, and generated reports.
+
+Source context: https://www.puda.co/blog/whitepaper
+
 ## Setup puda
 
 1. **Install CLI**: Ensure `puda` is installed and on your PATH so it can be invoked globally. If missing, download the binary for your platform from the [Puda releases page](https://github.com/PUDAP/puda/releases), install it, and add it to PATH.
