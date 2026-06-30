@@ -1,15 +1,20 @@
 ---
 name: puda
-description: Setup puda project, CLI installation, and project/experiment structure. Use when initializing a Puda project, puda experiment, or when updating skills is needed
+description: Set up the PUDA CLI and initialize projects. Covers CLI installation, dependencies, login, NATS config, skills install/update, and project folder structure. Use when setting up PUDA, initializing a new project, or updating installed skills.
 ---
-## Setting up new puda project
-1. **Check installation**: Determine how to invoke the CLI — use `puda` if installed globally, or from the project root use `puda` on Unix/macOS or `.\puda.exe` on Windows if only a local binary exists. If it's missing, direct the user to the [Puda releases page](https://github.com/PUDAP/puda/releases). Use that same invocation (`puda`, `./puda`, or `.\puda.exe`) consistently in all steps below.
-2. **Ensure Python and pip**: Ensure `python3` and `pip` are available; install them first if missing. 
-3. **Login**: Log in to puda with `puda login -u <username>`;
-4. **New project folder**: run `puda init` (e.g. `puda init .` or `puda init <folder_name>`).
-5. **Install Skills**: run `puda skills install` to install agent skills for puda
+## Setup puda
 
-Only after the CLI is installed and the project is initialized, proceed with protocol generation, machine commands, or experiment workflows.
+1. **Install CLI**: Ensure `puda` is installed and on your PATH so it can be invoked globally. If missing, download the binary for your platform from the [Puda releases page](https://github.com/PUDAP/puda/releases), install it, and add it to PATH.
+2. **Ensure dependencies**: Ensure `python3`, `pip`, and `npx` are available; install them first if missing.
+3. **Login**: Ask the user for their username if not already known — do not assume. Log in with `puda login -u <username>`.
+4. **Setup NATS servers**: Run `puda config list` to see the current `nats_servers` value. If not set or the user wants to change it, ask for the comma-separated NATS server URLs — do not assume. Set with `puda config set nats_servers <comma-separated-urls>`.
+5. **Install skills**: Run `puda skills install` to install agent skills for puda.
+
+## Setup project
+
+Run `puda init` (e.g. `puda init .` or `puda init <folder_name>`).
+
+Only after puda is set up and the project is initialized, proceed with protocol generation, machine commands, or experiment workflows.
 
 ## Project Folder Structure
 
@@ -28,4 +33,3 @@ To refresh or update puda skills:
 ```bash
 puda skills update
 ```
-(or `./puda skills update` / `.\puda.exe skills update` if using the local CLI)
