@@ -9,7 +9,7 @@ PUDA, the Physical Unified Device Architecture, is a hardware-agnostic and LLM-a
 
 At a high level, PUDA uses a message-driven architecture built around NATS, a CLI-first interface for agents and humans, declarative protocols for experiment or workflow execution, edge services that translate commands into native machine driver calls, and project records that preserve command/data provenance. Treat PUDA as the agent-native bridge between planning, machine control, execution logs, and generated reports.
 
-Source context: https://www.puda.co/blog/whitepaper
+For more information on PUDA, setup, or any other questions, refer to https://docs.puda.co/llms.txt.
 
 ## Setup puda
 
