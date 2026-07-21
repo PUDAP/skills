@@ -18,8 +18,6 @@ This repository contains skills for the Puda project, following the [Agent Skill
 | **puda-edge** | Creating an edge client to integrate any machine into PUDA. Use when scaffolding a new machine edge service, writing a machine driver, or setting up the NATS-based communication layer. |
 | **karpathy-guidelines** | Behavioral guidelines to reduce common LLM coding mistakes. Use when writing, reviewing, or refactoring code. |
 
-Cross-site PUDA vision-validation skills are maintained separately in [`PUDAP/puda-vision-validation`](https://github.com/PUDAP/puda-vision-validation).
-
 ## CLI Reference
 
 ```
