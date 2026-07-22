@@ -42,6 +42,7 @@ Each command:
 4. **Machine references**: Use available machine references and previous protocols to understand the machines and available commands. If the correct machine or command is unclear, ask or confirm with the user before proceeding.
 5. **Generate**: Create a new JSON file under the project's `protocols/` directory. Filename = `<protocol_id>.json`.
 6. **Validate**: Run `puda protocol validate -f <file_name>` to validate the protocol.
+7. **Vision Validation**: Use the respective `puda-vision-validation` skill for the relevant machine
 7. **Update project memory**: **Must** invoke the **puda-memory** skill right after creating/updating the file so `project.md` is updated.
 
 ## Output Format (JSON)
