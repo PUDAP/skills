@@ -16,7 +16,7 @@ This repository contains skills for the Puda project, following the [Agent Skill
 | **puda-database** | Query the puda database using SQL and the puda CLI. Use when users need to inspect schema or run SQL commands. |
 | **puda-analysis** | Data analysis using puda with Python. Use when exploring puda database data, running data analysis, creating visualizations, or working with puda data in Python. |
 | **puda-edge** | Creating an edge client to integrate any machine into PUDA. Use when scaffolding a new machine edge service, writing a machine driver, or setting up the NATS-based communication layer. |
-| **puda-ui** | Streamlit manual-control frontends backed by the PUDA CLI. Use when building operator UIs with Start / Complete / Reset session controls. |
+| **puda-manual-ui** | Streamlit manual-control frontends backed by the PUDA CLI. Use when building operator UIs with Start / Complete / Reset session controls. |
 | **karpathy-guidelines** | Behavioral guidelines to reduce common LLM coding mistakes. Use when writing, reviewing, or refactoring code. |
 
 ## CLI Reference
