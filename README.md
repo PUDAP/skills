@@ -10,7 +10,7 @@ This repository contains skills for the Puda project, following the [Agent Skill
 
 | Skill | Description |
 |-------|-------------|
-| **puda** | Setup puda project, CLI installation, and project/experiment structure. Use when initializing a Puda project or experiment, or when updating skills. |
+| **puda** | Setup puda project, CLI installation, and project/experiment structure. Use when initializing a Puda project or experiment, updating skills, or syncing host clocks to the site NTP server. |
 | **puda-protocol** | Protocol creation for PUDA. Use when generating or modifying protocols for experiments and discovering machine capabilities. |
 | **puda-memory** | Maintains **project.md** as the single source of truth for a project folder. Use after creating/updating protocols, or after running protocols, to record logs, protocol links, and history with timestamps. |
 | **puda-database** | Query the puda database using SQL and the puda CLI. Use when users need to inspect schema or run SQL commands. |

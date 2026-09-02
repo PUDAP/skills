@@ -1,6 +1,6 @@
 ---
 name: puda
-description: Use when introducing PUDA, setting up the PUDA CLI, initializing a project, or updating installed PUDA skills.
+description: Use when introducing PUDA, setting up the PUDA CLI, initializing a project, updating installed PUDA skills, or syncing host clocks to an NTP server with Chrony.
 ---
 
 ## PUDA context
@@ -34,6 +34,10 @@ Only after puda is set up and the project is initialized, proceed with protocol 
 ├── puda.config                       # puda config file
 └── puda.db                           # puda database file
 ```
+
+## Clock sync (Chrony / NTP)
+
+PUDA timestamps, discovery leases, and experiment provenance depend on host clocks. When setting up a site or edge host, or when clocks, Chrony, or NTP come up, read [references/chrony.md](references/chrony.md). Sync the **host** to the site NTP server. If you are unsure of the NTP server host IP, ask the user — do not assume. Do not run Chrony inside an edge container.
 
 ## Updating puda skills
 
