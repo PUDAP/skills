@@ -1,6 +1,6 @@
 ---
 name: puda
-description: Use when introducing PUDA, setting up the PUDA CLI, initializing a project, updating installed PUDA skills, or syncing host clocks to an NTP server with Chrony.
+description: Use when introducing PUDA, setting up the PUDA CLI, initializing a project, updating installed PUDA skills, syncing host clocks to an NTP server with Chrony, or publishing USB/IP camera livestreams over RTSP, RTMP, HLS, or WebRTC.
 ---
 
 ## PUDA context
@@ -38,6 +38,12 @@ Only after puda is set up and the project is initialized, proceed with protocol 
 ## Clock sync (Chrony / NTP)
 
 PUDA timestamps, discovery leases, and experiment provenance depend on host clocks. When setting up a site or edge host, or when clocks, Chrony, or NTP come up, read [references/chrony.md](references/chrony.md). Sync the **host** to the site NTP server. If you are unsure of the NTP server host IP, ask the user — do not assume. Do not run Chrony inside an edge container.
+
+## Livestream (USB / IP cameras)
+
+When a machine host has a USB camera, webcam, or IP camera and operators need live video, read [references/livestream.md](references/livestream.md). Use [PUDAP/livestream](https://github.com/PUDAP/livestream).
+
+**Ask the user** for the camera (USB `/dev/video*` path or network `rtsp://` URL) and the livestream name. Do not assume either. Then configure `streams.conf` / `compose.yml` and start the Docker stack with those values. List `/dev/video*` on the host before asking which USB camera to use.
 
 ## Updating puda skills
 
