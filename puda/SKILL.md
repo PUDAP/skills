@@ -43,7 +43,7 @@ PUDA timestamps, discovery leases, and experiment provenance depend on host cloc
 
 When a machine host has a USB camera, webcam, or IP camera and operators need live video, read [references/livestream.md](references/livestream.md). Use [PUDAP/livestream](https://github.com/PUDAP/livestream).
 
-**Ask the user** for the camera (USB `/dev/video*` path or network `rtsp://` URL) and the livestream name. Do not assume either. Then configure `streams.conf` / `compose.yml` and start the Docker stack with those values. List `/dev/video*` on the host before asking which USB camera to use.
+**Ask the user** for the camera (USB `/dev/video*` path or network `rtsp://` URL), the livestream name, a short description, the MediaMTX **host** (MagicDNS or Tailscale IP), and the **machine IDs** that should use this feed (one or many). Do not assume any of these. Then start the Docker stack and register with `puda livestream add --name --host --description --machines`. Livestreams are fleet records, not edge config.
 
 ## Updating puda skills
 

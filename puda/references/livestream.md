@@ -11,8 +11,10 @@ Do not assume, guess, or reuse example devices, URLs, stream names, or host addr
 Ask for all of these before writing config or starting containers:
 
 1. **Camera** — a local USB `/dev/video*` path, or a network camera URL (`rtsp://...`).
-2. **Stream name** — public name in stream URLs. Lowercase, no spaces. Examples of *shape* only: `livestream`, `ipcam0`.
-3. **Host address** — `MTX_WEBRTCADDITIONALHOSTS`: the Tailscale IP or MagicDNS name operators will use to open the stream.
+2. **Stream name** — public name in stream URLs and the PUDA registry. Lowercase hyphenated. Examples of *shape* only: `livestream`, `first-deck`.
+3. **Description** — one short sentence of visual context, e.g. what the camera sees.
+4. **Machine IDs** — one or more machines that should use this feed. The same URL can serve many machines.
+5. **Host address** — `MTX_WEBRTCADDITIONALHOSTS`: the Tailscale IP or MagicDNS name operators will use to open the stream.
 
 List USB cameras on this host before asking which one to use:
 
@@ -108,6 +110,25 @@ Report these URLs using the confirmed host and stream name:
 | WebRTC | `http://HOST:8889/STREAM_NAME/` |
 
 HLS and WebRTC open in a browser. Manual-control UIs can embed the HLS or WebRTC URL.
+
+## Register with PUDA
+
+Livestreams are fleet records in NATS KV (`puda livestream`), not a field on one edge. After the stack is up, register the MediaMTX **host** (MagicDNS or Tailscale IP) and **stream name**. The CLI derives RTSP, RTMP, HLS, and WebRTC URLs from those two values and the standard MediaMTX ports. Attach every machine that should use this feed:
+
+```bash
+puda livestream add --name STREAM_NAME --host HOST \
+  --description "Short visual context" --machines machine-a,machine-b
+puda livestream list
+puda livestream list --hosts first,lab
+puda livestream list --machines first
+puda machine ping machine-a
+```
+
+`--machines` can be omitted and filled later with `puda livestream attach STREAM_NAME --machines machine-c`. Detach or remove with `puda livestream detach` / `puda livestream rm`.
+
+`puda livestream list` groups streams as host then name (`livestreams: {host: {name: {description, machine_ids, urls}}}`). Use `--hosts` to list only those MediaMTX hosts. Use `--machines` to list only streams attached to those machine IDs.
+
+`puda machine list` advertises `livestream_count`. That count is registered PUDA livestreams only; unregistered cameras on the host may exist and will not be included. Use `puda livestream list --machines <id>` for registered names, hosts, and URLs. `puda machine ping` still joins registered records as `livestreams: [{name, host, description, urls}]`. Do not write URLs into an edge `.env`.
 
 ## Troubleshooting
 

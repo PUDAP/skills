@@ -27,10 +27,16 @@ puda
 │   ├── run                  Run a protocol on machines via NATS
 │   └── validate             Validate a protocol JSON file
 ├── machine
-│   ├── list                 Discover machines via heartbeat
+│   ├── list                 Discover machines via ping (description, livestream_count)
 │   ├── state <machine_id>   Get the state of a machine
 │   ├── reset <machine_id>   Reset a machine
 │   └── commands <machine_id> Show available commands
+├── livestream
+│   ├── add                  Register host + stream name and attach machines
+│   ├── list                 List fleet livestreams [--hosts] [--machines]
+│   ├── rm                   Remove a livestream
+│   ├── attach               Attach machines to a livestream
+│   └── detach               Detach machines from a livestream
 ├── login                    Log in to a PUDA account
 ├── logout                   Log out of a PUDA account
 ├── config
