@@ -14,7 +14,7 @@ Ask for all of these before writing config or starting containers:
 2. **Stream name** — public name in stream URLs and the PUDA registry. Lowercase hyphenated. Examples of *shape* only: `livestream`, `first-deck`.
 3. **Description** — one short sentence of visual context, e.g. what the camera sees.
 4. **Machine IDs** — one or more machines that should use this feed. The same URL can serve many machines.
-5. **Host address** — `MTX_WEBRTCADDITIONALHOSTS`: the Tailscale IP or MagicDNS name operators will use to open the stream.
+5. **Host address** — `MTX_WEBRTCADDITIONALHOSTS`: the MagicDNS name operators will use to open the stream, the Tailscale IP if MagicDNS is not available, or the machine's IP address if the host has no Tailscale.
 
 List USB cameras on this host before asking which one to use:
 
@@ -34,7 +34,7 @@ For IP cameras, the user supplies the stream URL from the camera admin UI or ven
 rtsp://user:pass@192.168.1.50:554/stream1
 ```
 
-If `MTX_WEBRTCADDITIONALHOSTS` is unknown, suggest a detected Tailscale address (`tailscale ip -4` or MagicDNS from `tailscale status --json`) and wait for confirmation. Never write an example IP into `.env`.
+If `MTX_WEBRTCADDITIONALHOSTS` is unknown, detect Tailscale and prefer MagicDNS from `tailscale status --json` when it exists. Fall back to `tailscale ip -4` if MagicDNS is missing. If the host has no Tailscale, use the machine's IP address. Suggest the detected address and wait for confirmation. Never write an example IP into `.env`.
 
 ## Setup
 
@@ -113,7 +113,7 @@ HLS and WebRTC open in a browser. Manual-control UIs can embed the HLS or WebRTC
 
 ## Register with PUDA
 
-Livestreams are fleet records in NATS KV (`puda livestream`), not a field on one edge. After the stack is up, register the MediaMTX **host** (MagicDNS or Tailscale IP) and **stream name**. The CLI derives RTSP, RTMP, HLS, and WebRTC URLs from those two values and the standard MediaMTX ports. Attach every machine that should use this feed:
+Livestreams are fleet records in NATS KV (`puda livestream`), not a field on one edge. After the stack is up, register the MediaMTX **host** (MagicDNS, Tailscale IP, or the machine IP if there is no Tailscale) and **stream name**. The CLI derives RTSP, RTMP, HLS, and WebRTC URLs from those two values and the standard MediaMTX ports. Attach every machine that should use this feed:
 
 ```bash
 puda livestream add --name STREAM_NAME --host HOST \

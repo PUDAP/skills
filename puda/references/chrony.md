@@ -2,6 +2,8 @@
 
 PUDA timestamps, discovery leases, and experiment provenance depend on host clocks. Sync every PUDA host to the **site NTP server** (Chrony on the NATS machine). The edge process does not talk NTP; it uses the host clock. Do not run Chrony inside an edge Docker container.
 
+Core NATS forwards messages; it does not add a canonical send/receive timestamp or synchronize system clocks. If a publisher adds a timestamp, that time comes from the publisher's local clock. Clock skew can make message times appear out of order across machines.
+
 ```text
 public/campus NTP  →  chrony on the NATS host  →  chronyd / w32time on each edge host
 ```
@@ -21,7 +23,7 @@ Use `HOST_IP` from the site Chrony `.env` when that file is present and the valu
 | This machine | Action |
 |---|---|
 | NATS host (site NTP server) | Run the Chrony **container**. Do not run the edge client scripts. |
-| Edge host | Point Chrony / Windows Time at `HOST_IP`. Do not start a second NTP server. |
+| Edge host | Ask for the site NTP IP and run this skill's `scripts/`. Do not start a second NTP server. |
 | Edge container | Inherit the host clock. Stop if you were about to install Chrony here. |
 
 If Docker container `chrony` is already running on this host, it is the site NTP server and already disciplines this clock. Skip client setup.
@@ -70,58 +72,23 @@ server ntp.example.edu iburst
 docker compose up -d --force-recreate
 ```
 
-## Edge host — Linux
+## Edge host
 
-Prefer the setup script shipped with the edge (`chrony/setup.sh` or `test-edge/chrony/setup.sh`):
+This skill ships the Chrony client scripts. Do not write Chrony or Windows Time config by hand. Ask the user for the NTP server IP if you do not have it, then run the script from this skill directory.
 
-```bash
-sudo ./setup.sh <NTP_SERVER>
-```
-
-If the script is not present, configure Chrony as a **client only**:
+Linux:
 
 ```bash
-sudo timedatectl set-ntp false
-sudo apt update && sudo apt install -y chrony
-sudo systemctl disable --now systemd-timesyncd ntp ntpd 2>/dev/null || true
+sudo ./scripts/sync-clock.sh <NTP_SERVER>
 ```
 
-Write `/etc/chrony/chrony.conf` (or `/etc/chrony.conf`). Comment out any `pool` lines. `port 0` means this host does not serve NTP:
-
-```conf
-server <NTP_SERVER> iburst
-port 0
-makestep 1.0 3
-rtcsync
-driftfile /var/lib/chrony/chrony.drift
-```
-
-Ubuntu also ships pool sources under `/etc/chrony/sources.d`. Move those files aside so the host locks to site NTP only.
-
-```bash
-sudo systemctl enable --now chrony
-sudo systemctl restart chrony
-```
-
-On Debian/Ubuntu the unit is `chrony.service`; on RHEL/Fedora it is `chronyd.service`. systemd 255+ refuses to enable aliases — enable the real unit.
-
-## Edge host — Windows
-
-Elevated PowerShell. Prefer `chrony/setup.ps1` when present:
+Windows, elevated PowerShell:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\setup.ps1 -NtpServer <NTP_SERVER>
+powershell -ExecutionPolicy Bypass -File .\scripts\sync-clock.ps1 -NtpServer <NTP_SERVER>
 ```
 
-Manual equivalent:
-
-```powershell
-Set-Service -Name w32time -StartupType Automatic
-Start-Service -Name w32time
-w32tm /config /manualpeerlist:"<NTP_SERVER>,0x8" /syncfromflags:manual /reliable:YES /update
-Restart-Service -Name w32time
-w32tm /resync /force
-```
+Do not start a second NTP server on the edge. Do not run these scripts on the NATS host.
 
 ## Verify lock
 

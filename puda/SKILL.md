@@ -37,13 +37,13 @@ Only after puda is set up and the project is initialized, proceed with protocol 
 
 ## Clock sync (Chrony / NTP)
 
-PUDA timestamps, discovery leases, and experiment provenance depend on host clocks. When setting up a site or edge host, or when clocks, Chrony, or NTP come up, read [references/chrony.md](references/chrony.md). Sync the **host** to the site NTP server. If you are unsure of the NTP server host IP, ask the user — do not assume. Do not run Chrony inside an edge container.
+PUDA timestamps, discovery leases, and experiment provenance depend on host clocks. When setting up a site or edge host, or when clocks, Chrony, or NTP come up, read [references/chrony.md](references/chrony.md). On an **edge** host, ask the user for the site NTP server IP and run [`scripts/sync-clock.sh`](scripts/sync-clock.sh) or [`scripts/sync-clock.ps1`](scripts/sync-clock.ps1). Do not assume the IP. Do not run Chrony inside an edge container.
 
 ## Livestream (USB / IP cameras)
 
 When a machine host has a USB camera, webcam, or IP camera and operators need live video, read [references/livestream.md](references/livestream.md). Use [PUDAP/livestream](https://github.com/PUDAP/livestream).
 
-**Ask the user** for the camera (USB `/dev/video*` path or network `rtsp://` URL), the livestream name, a short description, the MediaMTX **host** (MagicDNS or Tailscale IP), and the **machine IDs** that should use this feed (one or many). Do not assume any of these. Then start the Docker stack and register with `puda livestream add --name --host --description --machines`. Livestreams are fleet records, not edge config.
+**Ask the user** for the camera (USB `/dev/video*` path or network `rtsp://` URL), the livestream name, a short description, the MediaMTX **host** (MagicDNS, Tailscale IP, or the machine IP if there is no Tailscale), and the **machine IDs** that should use this feed (one or many). Do not assume any of these. Then start the Docker stack and register with `puda livestream add --name --host --description --machines`. Livestreams are fleet records, not edge config.
 
 ## Updating puda skills
 
