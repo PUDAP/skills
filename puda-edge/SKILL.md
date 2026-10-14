@@ -3,15 +3,29 @@ name: puda-edge
 description: >-
   Write, configure, and remotely update PUDA Python edge services. Use when
   creating or editing driver.py or main.py, adding @command or @safety,
-  scaffolding from edge-python-template, integrating a new machine, or running
-  puda machine update.
+  scaffolding from the SDK/API or GUI edge templates, integrating a new machine,
+  building GUI-controlled instruments from manuals or screenshots and task
+  instructions, or running puda machine update.
 ---
 
 # Puda Edge
 
 Help write Python edge services: thin hardware wrappers that connect to NATS and advertise machine commands.
 
-Follow [Integrating a New Machine](https://docs.puda.co/docs/0.1.0/setup/integrating-a-new-machine) for repo layout, `main.py` config, telemetry, and multi-machine PCs. Scaffold from [edge-python-template](https://github.com/PUDAP/edge-python-template). Name the repo `puda-<machine_id>-edge`.
+## Build an edge
+
+Use an existing machine SDK/API when suitable. For instruments operated through desktop software, build a GUI edge: the AI uses a manual or screenshots with task instructions to write machine-specific Python workflows, which PUDA exposes over NATS.
+
+For GUI work, read [references/gui-edge.md](references/gui-edge.md). Clone [PUDAP/edge-python-gui-template](https://github.com/PUDAP/edge-python-gui-template) from GitHub as the scaffold and use [PUDAP/opentrons-gui-edge](https://github.com/PUDAP/opentrons-gui-edge) as the worked example. The guide covers translating task instructions into deterministic GUI commands and validating them. Use a vendor PDF manual when available. Without a manual, screenshots showing where to click, what to type, and the expected result are valid context for an atomic command. Supplement either source with live captures when available.
+
+For SDK/API and GUI edges:
+
+- Inspect the selected template's dependencies and SDK contract before scaffolding. The GUI examples use `from puda import EdgeNatsClient, EdgeRunner, command`.
+- Keep machine commands typed, JSON-compatible, and documented with parameters, units, defaults, prerequisites, returned evidence, and failures. Expose intended workflows with `@command`. For GUI edges, `capture_screenshot` is the only low-level remote command; use inherited GUI helpers internally to implement high-level workflows.
+- Configure machine identity, NATS servers, and connection/window details through settings and `.env.example`. Preserve the template's lifecycle and cleanup. Do not copy credentials or a working `.env` from another machine.
+- Verify commands offline before desktop or hardware validation. Report separately what was implemented, tested with fixtures, observed on the desktop, and exercised on hardware.
+
+Follow [Integrating a New Machine](https://docs.puda.co/docs/0.1.0/setup/integrating-a-new-machine) for repo layout, `main.py` config, telemetry, and multi-machine PCs. For SDK/API edges, scaffold from [edge-python-template](https://github.com/PUDAP/edge-python-template); for GUI edges, use the GUI template above. Name the repo `puda-<machine_id>-edge`.
 
 Python only. For host/NATS/hardware commissioning, use **puda-deployment**. After commands work, install the CLI with **puda**.
 
@@ -122,3 +136,5 @@ Telemetry must be JSON-serializable. Publish heartbeat plus whatever position, h
 ```bash
 puda machine update
 ```
+
+Check `puda machine update --help` for the installed CLI's targeting and update options before using it.
