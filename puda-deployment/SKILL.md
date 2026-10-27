@@ -1,13 +1,12 @@
 ---
 name: puda-deployment
-description: Use when installing, commissioning, transferring, or troubleshooting a PUDA edge driver, or when asked to export PUDA deployment logs and learnings. Applies a progressive host-to-labware SOP, records software and hardware failures, and requires evidence at every readiness gate.
-version: 1.0.0
-author: PUDAP
+description: Install, commission, transfer, and troubleshoot PUDA edge deployments using readiness gates. Use for host, NATS, controller, labware, and deployment-log work.
 license: MIT
 metadata:
-  hermes:
-    tags: [puda, deployment, edge-driver, nats, commissioning, troubleshooting]
-    related_skills: [puda, puda-edge, puda-protocol, puda-memory]
+  version: "1.0.0"
+  author: PUDAP
+  hermes.tags: "puda, deployment, edge-driver, nats, commissioning, troubleshooting"
+  hermes.related_skills: "puda, puda-edge, puda-protocol, puda-memory"
 ---
 
 # PUDA Deployment
@@ -27,6 +26,8 @@ Use this skill to install a new PUDA-connected tool or diagnose an incomplete in
 Do not use deployment as permission to move hardware. Motion, homing, gripping, or process commands require separate authorization and a clear workspace.
 
 ## Progressive gate sequence
+
+Read only the reference for the current gate or symptom; load later gates when earlier ones pass.
 
 1. **System model:** Read [references/system-and-gates.md](references/system-and-gates.md). Record site, host, tool, machine ID, controller transport, and owners.
 2. **Host:** Run `scripts/preflight.sh`. Verify required commands, Docker access, clock, disk, and permissions.
@@ -61,14 +62,7 @@ Copy `templates/deployment-record.md` before starting. Append actions and actual
 
 ## Export logs and learnings
 
-When asked to export the PUDA deployment logs and learnings:
-
-1. Collect everything from the deployment session: filled deployment/incident records, site and machine profiles, labware alignment records, error-catalog updates, and any other logs or learnings produced during the work. Redact secrets.
-2. Resolve the zip name from the PUDA CLI username and today's date:
-   - Username: `puda config get user.username`
-   - Date: `YYYY-MM-DD` (UTC)
-   - Filename: `<username>-<YYYY-MM-DD>.zip` (example: `zhao-2026-07-22.zip`)
-3. Zip the collected files under that name and send the archive to the user.
+When asked for a deployment archive, read [export procedure](references/export-logs.md).
 
 ## Completion criteria
 

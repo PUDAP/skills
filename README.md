@@ -10,14 +10,39 @@ This repository contains skills for the Puda project, following the [Agent Skill
 
 | Skill | Description |
 |-------|-------------|
-| **puda** | Setup puda project, CLI installation, and project/experiment structure. Use when initializing a Puda project or experiment, updating skills, syncing host clocks to the site NTP server, or publishing USB/IP camera livestreams. |
-| **puda-protocol** | Protocol creation for PUDA. Use when generating or modifying protocols for experiments and discovering machine capabilities. |
-| **puda-memory** | Maintains **project.md** as the single source of truth for a project folder. Use after creating/updating protocols, or after running protocols, to record logs, protocol links, and history with timestamps. |
-| **puda-database** | Query the puda database using SQL and the puda CLI. Use when users need to inspect schema or run SQL commands. |
-| **puda-analysis** | Data analysis using puda with Python. Use when exploring puda database data, running data analysis, creating visualizations, or working with puda data in Python. |
-| **puda-edge** | Creating an edge client to integrate any machine into PUDA. Use when scaffolding a new machine edge service, writing a machine driver, or setting up the NATS-based communication layer. |
-| **puda-manual-ui** | Streamlit manual-control frontends backed by the PUDA CLI. Use when building operator UIs with Start / Complete / Reset session controls. |
-| **karpathy-guidelines** | Behavioral guidelines to reduce common LLM coding mistakes. Use when writing, reviewing, or refactoring code. |
+| [puda](puda/SKILL.md) | CLI/project setup, profiles, machine inspection, telemetry, clocks, and cameras. |
+| [puda-protocol](puda-protocol/SKILL.md) | Protocol creation, validation, execution, and command safety. |
+| [puda-memory](puda-memory/SKILL.md) | Project records, protocol links, and timestamped run history. |
+| [puda-database](puda-database/SKILL.md) | Schema inspection and SQL through the PUDA CLI. |
+| [puda-data](puda-data/SKILL.md) | Extraction, analysis, provenance hashes, exports, plots, experiment reports, and device adapters. |
+| [puda-edge](puda-edge/SKILL.md) | Python SDK/API or GUI edge drivers and remote updates. |
+| [puda-manual-ui](puda-manual-ui/SKILL.md) | Streamlit operator dashboards using CLI manual sessions. |
+| [puda-deployment](puda-deployment/SKILL.md) | Host-to-labware commissioning, troubleshooting, and deployment records. |
+
+### Progressive discovery
+
+The [Agent Skills specification](https://agentskills.io/specification) separates discovery from task instructions and supporting resources:
+
+1. At startup, a compatible agent reads only each skill's `name` and `description`.
+2. When a task matches, it reads that skill's `SKILL.md` for the workflow, essential constraints, and resource links.
+3. It reads only the linked references needed for the current operation, or executes the relevant bundled scripts. Do not preload every reference or every skill.
+
+For example, a telemetry inspection loads `puda/SKILL.md` and `puda/references/cli-profiles-and-telemetry.md`; it does not need camera, clock, or setup instructions. Short skills such as `puda-memory` stay self-contained.
+
+Skill packaging enables this loading pattern; the agent client controls what it actually loads. Keep descriptions concise, keep detailed examples and task-specific procedures in focused references, and link those references directly from `SKILL.md`. Preserve safety and lifecycle constraints in the entrypoint. Keep entrypoints below the specification's recommended 500 lines / 5,000 tokens.
+
+### Validate skill packages
+
+Use the specification's reference validator (requires [uv](https://docs.astral.sh/uv/)):
+
+```bash
+uv tool install 'git+https://github.com/agentskills/agentskills.git#subdirectory=skills-ref'
+for skill in */SKILL.md; do
+  skills-ref validate "${skill%/SKILL.md}" || exit 1
+done
+```
+
+Also check that relative resource links resolve and that each reference can be selected from its entrypoint without loading unrelated guides. The validator checks format, not instruction quality.
 
 ## CLI Reference
 

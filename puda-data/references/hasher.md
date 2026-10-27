@@ -71,7 +71,7 @@ is_valid = verify_integrity("f3677d75...", "sha256:abc123...")
 ## Integrity Demo
 
 ```python
-from integrity_demo import demonstrate_integrity
+from hasher import demonstrate_integrity
 
 demonstrate_integrity(run_id)
 # Shows how even a 1% change produces a completely different hash!

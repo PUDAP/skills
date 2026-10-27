@@ -1,4 +1,12 @@
-# puda-data Phase 4: Report Generator
+# PUDA experiment reports
+
+## Reporting workflow
+
+1. Resolve the intended project and run/experiment IDs from project records. Use `puda project extract` to extract data related to a `project_id`.
+2. Inspect `puda db schema` before selecting report data; do not assume table or column names.
+3. For custom analysis and plotting, select the analysis reference linked from `SKILL.md`. Keep custom scripts and generated artifacts in the project's `analysis/` directory.
+4. Use the bundled extraction, SHA-256 hashing, plotting, and Markdown report helpers as needed. Select their references from `SKILL.md` without loading unrelated guides.
+5. Include source IDs, extraction scope, hashes, findings, and requested plots so conclusions can be traced to the recorded data.
 
 ## Overview
 
@@ -124,6 +132,6 @@ report.add_plot("My Plot", my_custom_plot, {"run_id": run_id})
 
 ## Default Paths
 
-- Database: `/home/bears/.openclaw/workspace/puda.db`
-- Default reports: `/home/bears/.openclaw/workspace/reports/`
+- Database: `<project-root>/puda.db`
+- Default reports: `<project-root>/reports/`
 - Plots subdir: `reports/plots/`
