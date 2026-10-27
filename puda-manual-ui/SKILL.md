@@ -11,7 +11,9 @@ description: >-
 
 Build Streamlit operator UIs that drive machines through the **PUDA CLI**. The CLI remains the control plane; the UI only shells out to `puda`.
 
-For Streamlit layout, widgets, and styling, also follow the `developing-with-streamlit` skill.
+## Install Streamlit and its skill
+
+Install [streamlit/streamlit](https://github.com/streamlit/streamlit) with uv or pip, then install the Streamlit skills from that package. Follow that skill to build layout, widgets, and styling.
 
 ## Required session controls
 
